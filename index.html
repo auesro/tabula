@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Sin red: el navegador bloquea cualquier conexión externa (fuentes, scripts, imágenes, formularios, fetch, WebSocket...). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Tabula · Preparación de archivos CSV y Excel</title>
+<meta name="description" content="Combina, limpia y reorganiza archivos CSV y Excel en tu navegador y exporta el resultado. Los datos no salen de tu equipo.">
+<style>
+
+/* ==========================================================
+   Design tokens. Change these and the whole page follows.
+   Name "Tabula" is a placeholder.
+   ========================================================== */
+:root{
+  --paper:#F7F5EF;          /* warm page background */
+  --card:#FFFFFF;
+  --ink:#17231F;            /* main text */
+  --ink-soft:#4B5C55;       /* secondary text */
+  --rule:#DAD5C6;           /* borders */
+  --rule-soft:#ECE8DB;
+  --green:#1F5B46;          /* primary */
+  --green-deep:#154033;
+  --green-tint:#E3EFE9;
+  --amber:#B9731A;          /* accent */
+  --amber-tint:#F8EAD3;
+  --red:#A8322B;
+  --red-tint:#F7E1DE;
+  --focus:#2B6CB0;
+  --radius:12px;
+  --shadow:0 1px 0 rgba(23,35,31,.05),0 10px 26px -18px rgba(23,35,31,.35);
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#111916;--card:#18221E;--ink:#E9EFEB;--ink-soft:#A3B3AB;
+    --rule:#2D3B35;--rule-soft:#222F2A;
+    --green:#58B08F;--green-deep:#7CC7A8;--green-tint:#1B3228;
+    --amber:#E0A04A;--amber-tint:#33281A;--red:#E58B83;--red-tint:#3A201E;
+    --focus:#7DB4F0;--shadow:0 1px 0 rgba(0,0,0,.3),0 10px 26px -18px rgba(0,0,0,.7);
+  }
+}
+
+/* ---------- base ---------- */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--font);-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--serif);font-weight:700;line-height:1.2;margin:0;letter-spacing:-.01em}
+p{margin:0 0 .8em}
+a{color:var(--green);text-underline-offset:3px}
+a:hover{color:var(--green-deep)}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:6px}
+code,.mono{font-family:var(--mono);font-size:.88em}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+.visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+[hidden]{display:none!important}
+
+/* ---------- header ---------- */
+.site-head{background:var(--card);border-bottom:1px solid var(--rule)}
+.head-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-size:1.45rem;font-weight:700;color:var(--ink);text-decoration:none}
+.brand-mark{width:30px;height:30px;border-radius:8px;background:var(--green);display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:6px}
+.brand-mark i{background:rgba(255,255,255,.9);border-radius:1px}
+.brand-mark i:nth-child(2),.brand-mark i:nth-child(6){background:var(--amber-tint)}
+.nav{display:flex;gap:4px;flex-wrap:wrap}
+.nav a{color:var(--ink-soft);text-decoration:none;padding:7px 12px;border-radius:8px;font-size:.95rem;font-weight:500}
+.nav a:hover,.nav a[aria-current="page"]{background:var(--green-tint);color:var(--green-deep)}
+
+/* ---------- intro ---------- */
+.intro{padding:44px 0 20px}
+.eyebrow{font:600 .78rem/1 var(--font);letter-spacing:.12em;text-transform:uppercase;color:var(--amber);margin-bottom:12px}
+.intro h1{font-size:clamp(1.9rem,4.6vw,2.9rem);max-width:20ch}
+.lede{margin-top:14px;max-width:62ch;color:var(--ink-soft);font-size:1.08rem}
+.privacy{display:inline-flex;align-items:center;gap:8px;margin-top:16px;padding:8px 14px;border-radius:999px;background:var(--green-tint);color:var(--green-deep);font-size:.9rem;font-weight:600}
+.privacy::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--green)}
+
+/* ---------- step tracker ---------- */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;list-style:none;margin:26px 0 8px;padding:0;counter-reset:s}
+.steps li{counter-increment:s;display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--rule);border-radius:var(--radius);background:var(--card);font-size:.92rem;font-weight:600;color:var(--ink-soft)}
+.steps li::before{content:counter(s);flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;border:2px solid var(--rule);font-size:.8rem}
+.steps li.done{color:var(--green-deep)}
+.steps li.done::before{content:"\2713";background:var(--green);border-color:var(--green);color:#fff}
+.steps li.now{color:var(--ink);border-color:var(--green);box-shadow:0 0 0 3px var(--green-tint)}
+.steps li.now::before{background:var(--green);border-color:var(--green);color:#fff}
+
+/* ---------- cards ---------- */
+main{padding-bottom:64px}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;margin-top:18px}
+.card-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.card-head h2{font-size:1.3rem}
+.card-head .hint{font-size:.88rem;color:var(--ink-soft)}
+.num{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--green);color:#fff;font:700 .82rem var(--font);margin-right:10px;vertical-align:2px}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid var(--green);background:var(--green);color:#fff;font:600 .95rem/1 var(--font);padding:11px 18px;border-radius:10px;cursor:pointer;text-decoration:none;transition:background .15s,transform .05s}
+.btn:hover{background:var(--green-deep);border-color:var(--green-deep);color:#fff}
+.btn:active{transform:translateY(1px)}
+.btn.ghost{background:transparent;color:var(--green-deep)}
+.btn.ghost:hover{background:var(--green-tint);color:var(--green-deep)}
+.btn.danger{background:transparent;border-color:var(--red);color:var(--red)}
+.btn.danger:hover{background:var(--red-tint)}
+.btn.small{padding:7px 12px;font-size:.85rem;border-radius:8px}
+.btn[disabled]{opacity:.45;cursor:not-allowed;pointer-events:none}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+
+/* ---------- drop zone & file list ---------- */
+.drop{display:grid;place-items:center;text-align:center;gap:6px;padding:34px 20px;border:2px dashed var(--rule);border-radius:var(--radius);background:var(--paper);cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--green);background:var(--green-tint)}
+.drop strong{font-size:1.05rem}
+.drop span{color:var(--ink-soft);font-size:.92rem}
+.drop-icon{width:44px;height:44px;border-radius:12px;background:var(--green-tint);color:var(--green);display:grid;place-items:center;font-size:1.5rem;margin-bottom:4px}
+.files{list-style:none;margin:16px 0 0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.file{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--rule);border-radius:10px;background:var(--card)}
+.file-type{flex:none;width:40px;padding:4px 0;text-align:center;border-radius:6px;font:700 .68rem/1 var(--font);letter-spacing:.06em;background:var(--green-tint);color:var(--green-deep)}
+.file-type.xlsx{background:var(--amber-tint);color:var(--amber)}
+.file-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:.9rem}
+.file-meta{flex:none;color:var(--ink-soft);font-size:.85rem}
+.file .remove{flex:none;border:0;background:transparent;color:var(--ink-soft);font-size:1.2rem;line-height:1;cursor:pointer;padding:4px 8px;border-radius:6px}
+.file .remove:hover{background:var(--red-tint);color:var(--red)}
+
+/* ---------- operations ---------- */
+.ops{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:12px}
+.op{position:relative;text-align:left;padding:16px;border:1.5px solid var(--rule);border-radius:var(--radius);background:var(--card);color:var(--ink);font:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.op:hover{border-color:var(--green);box-shadow:var(--shadow)}
+.op[aria-pressed="true"]{border-color:var(--green);background:var(--green-tint)}
+.op b{display:block;font-size:1rem;margin-bottom:4px}
+.op span{display:block;font-size:.86rem;color:var(--ink-soft);line-height:1.45}
+.op-icon{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;background:var(--green-tint);color:var(--green);font-size:1.25rem;line-height:1;margin-bottom:10px}
+.op[aria-pressed="true"] .op-icon{background:var(--green);color:#fff}
+
+/* ---------- forms ---------- */
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-top:18px}
+.field label{display:block;font-size:.86rem;font-weight:600;margin-bottom:6px}
+.field .help{font-size:.82rem;color:var(--ink-soft);margin:6px 0 0}
+input[type=text],select{width:100%;padding:10px 12px;font:inherit;color:var(--ink);background:var(--card);border:1.5px solid var(--rule);border-radius:9px}
+input[type=text]:hover,select:hover{border-color:var(--ink-soft)}
+input[type=text]:focus,select:focus{border-color:var(--green)}
+.check{display:flex;align-items:center;gap:9px;font-size:.92rem;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--green)}
+
+/* ---------- notices ---------- */
+.note{display:flex;gap:10px;padding:12px 14px;border-radius:10px;font-size:.9rem;border:1px solid transparent;margin-top:16px}
+.note.info{background:var(--green-tint);color:var(--green-deep);border-color:color-mix(in srgb,var(--green) 25%,transparent)}
+.note.warn{background:var(--amber-tint);color:var(--amber);border-color:color-mix(in srgb,var(--amber) 30%,transparent)}
+.note.error{background:var(--red-tint);color:var(--red);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.note b{font-weight:700}
+
+/* ---------- preview table ---------- */
+.stats{display:flex;flex-wrap:wrap;gap:8px 22px;margin-bottom:14px;font-size:.9rem;color:var(--ink-soft)}
+.stats b{color:var(--ink);font-size:1.05rem;margin-right:4px}
+.table-scroll{overflow:auto;max-height:70vh;border:1px solid var(--rule);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{padding:9px 12px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--rule-soft)}
+thead th{position:sticky;top:0;background:var(--green-tint);color:var(--green-deep);font-weight:700;border-bottom:1px solid var(--rule);z-index:1}
+tbody tr:nth-child(even){background:color-mix(in srgb,var(--paper) 55%,transparent)}
+tbody tr:hover{background:var(--green-tint)}
+td.num-cell{text-align:right;font-family:var(--mono)}
+td .tag{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--amber-tint);color:var(--amber);font-size:.78rem;font-weight:600}
+td.bad{background:var(--red-tint);color:var(--red)}
+
+/* ---------- export ---------- */
+.export-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.format{display:flex;gap:12px;align-items:flex-start;padding:14px;border:1.5px solid var(--rule);border-radius:var(--radius);cursor:pointer}
+.format:hover{border-color:var(--green)}
+.format:has(input:checked){border-color:var(--green);background:var(--green-tint)}
+.format input{margin-top:4px;accent-color:var(--green)}
+.format b{display:block}
+.format span{font-size:.85rem;color:var(--ink-soft)}
+
+/* ---------- footer ---------- */
+.site-foot{border-top:1px solid var(--rule);background:var(--card);padding:24px 0;color:var(--ink-soft);font-size:.88rem}
+.credits{text-align:center}.credits p{margin:0 0 .25em}.credits-cap{font:600 .78rem/1 var(--font);letter-spacing:.12em;text-transform:uppercase;color:var(--amber);margin-bottom:.6em!important}.credits-name{font:700 1.1rem var(--serif);color:var(--ink)}.credits-links{margin-top:.6em!important}
+
+/* ---------- responsive ---------- */
+/* ---------- borrar intermedios ---------- */
+.wipe{text-align:center;border-color:color-mix(in srgb,var(--red) 40%,var(--rule));padding:32px 24px}
+.wipe p{max-width:60ch;margin:0 auto .9em;color:var(--ink-soft)}
+.wipe-btn{display:block;width:100%;max-width:640px;margin:18px auto 0;padding:26px 20px;border:0;border-radius:16px;background:var(--red);color:#fff;font:800 clamp(1.15rem,3.2vw,1.6rem)/1.2 var(--font);letter-spacing:.01em;cursor:pointer;box-shadow:0 12px 26px -14px var(--red);transition:filter .15s,transform .05s}
+.wipe-btn:hover{filter:brightness(.92)}
+.wipe-btn:active{transform:translateY(2px)}
+.wipe-btn small{display:block;margin-top:6px;font:500 .85rem var(--font);opacity:.9}
+.wipe-confirm{max-width:640px;margin:18px auto 0;padding:18px;border:2px solid var(--red);border-radius:14px;background:var(--red-tint)}
+.wipe-confirm b{display:block;margin-bottom:12px;color:var(--red);font-size:1.05rem}
+.wipe-confirm .actions{justify-content:center;margin-top:0}
+.wipe-done{max-width:640px;margin:18px auto 0;text-align:left}
+@media (max-width:760px){
+  .steps{grid-template-columns:1fr 1fr}
+  .card{padding:18px}
+  .head-row{flex-direction:column;align-items:flex-start}
+  .intro{padding-top:30px}
+  .file-meta{display:none}
+}
+@media (max-width:420px){.steps{grid-template-columns:1fr}.btn{width:100%}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media print{.site-head,.steps,.actions,.nav{display:none}.card{box-shadow:none;break-inside:avoid}}
+
+/* ---------- combinar archivos ---------- */
+.role-sel{flex:none;width:auto;padding:6px 8px;font-size:.85rem;border-radius:8px}
+.msg{margin:10px 0 0;font-size:.9rem;color:var(--red)}
+.msg:empty{display:none}
+.fcards{display:grid;gap:14px;margin-top:6px}
+.fcard{border:1px solid var(--rule);border-radius:var(--radius);padding:16px;background:var(--paper)}
+.fcard-head{display:flex;align-items:center;gap:10px;margin-bottom:4px;min-width:0}
+.fcard-head b{font-family:var(--mono);font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.role{flex:none;display:inline-grid;place-items:center;min-width:28px;height:28px;padding:0 8px;border-radius:8px;background:var(--green);color:#fff;font:800 .85rem var(--font)}
+.role.b{background:var(--amber)}
+.fcard .fields{margin-top:10px}
+.fcard input[type=number]{width:100%;padding:10px 12px;font:inherit;color:var(--ink);background:var(--card);border:1.5px solid var(--rule);border-radius:9px}
+.fcard input[type=number]:focus{border-color:var(--green)}
+.picks{margin-top:14px}
+.picks>b{display:block;font-size:.86rem;margin-bottom:8px}
+.pick{display:grid;grid-template-columns:minmax(180px,1fr) minmax(160px,1fr) minmax(160px,1fr);gap:8px 12px;align-items:center;padding:8px 10px;border:1px solid var(--rule-soft);border-radius:10px;background:var(--card);margin-bottom:6px}
+.pick.off{grid-template-columns:1fr}
+.pick select,.pick input[type=text]{padding:7px 10px;font-size:.88rem}
+.global-opts{display:flex;flex-wrap:wrap;gap:14px 24px;align-items:end;margin-top:18px;padding-top:16px;border-top:1px dashed var(--rule)}
+.global-opts .field{min-width:200px}
+.soon{padding:22px;border:2px dashed var(--rule);border-radius:var(--radius);text-align:center;color:var(--ink-soft)}
+td.new{background:var(--green-tint)}
+td.fill{background:var(--amber-tint);color:var(--amber);font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:10px 0 0;font-size:.82rem;color:var(--ink-soft)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-2px;border:1px solid var(--rule)}
+details.keys{margin-top:12px;font-size:.88rem}
+details.keys summary{cursor:pointer;font-weight:600;color:var(--green-deep)}
+details.keys p{margin:8px 0 0;font-family:var(--mono);font-size:.82rem;color:var(--ink-soft);word-break:break-word}
+.empty-prev{padding:22px;text-align:center;color:var(--ink-soft)}
+@media (max-width:760px){.pick{grid-template-columns:1fr}.global-opts .field{min-width:0;flex:1 1 100%}}
+
+th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+th.sortable:hover{background:var(--green-tint2,var(--green-tint));text-decoration:underline}
+th.sortable:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+
+#prev-body tbody tr{cursor:pointer}
+#prev-body tbody tr.hl td{background:#FFE9A8 !important;color:#1c1a14;box-shadow:inset 0 1px 0 #D9A400,inset 0 -1px 0 #D9A400}
+
+td.editable{cursor:cell}
+td.man{background:#DCE9FB !important;color:#0F3A73;font-weight:700}
+.cell-edit{width:100%;min-width:64px;box-sizing:border-box;padding:2px 4px;font:inherit}
+
+.lang{display:inline-flex;margin-left:12px;border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+.lang button{border:0;background:transparent;color:var(--ink);font:700 .8rem var(--font);padding:6px 10px;cursor:pointer}
+.lang button[aria-pressed="true"]{background:var(--green);color:#fff}
+.lang button:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+
+.cls{margin-top:18px;border:1px solid var(--rule);border-left:4px solid var(--green);border-radius:10px;background:var(--card);overflow:hidden}
+.cls-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:12px 14px;background:var(--green-tint)}
+.cls-name{font-size:.98rem;color:var(--green-deep);overflow-wrap:anywhere}
+.cls-chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-block;padding:3px 10px;border-radius:999px;background:var(--card);border:1px solid var(--rule);font-size:.8rem;font-weight:600;color:var(--ink)}
+.cls-body{padding:2px 14px 14px}
+.cls-body:empty{display:none}
+.cls-body .note{margin-top:10px}
+.cls-body details.keys{margin-top:10px}
+
+.cls-intro{margin:22px 0 -6px;font-weight:700;color:var(--ink)}
+
+</style>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>Tabula</a>
+    <nav class="nav" aria-label="Principal">
+      <a href="#sources" aria-current="page">Preparar</a>
+      <a href="#about">Acerca de</a>
+    </nav>
+    <div class="lang" role="group" aria-label="Idioma"><button type="button" data-lang="es" aria-pressed="true">ES</button><button type="button" data-lang="en" aria-pressed="false">EN</button></div>
+  </div>
+</header>
+
+<div class="wrap" id="top">
+  <section class="intro">
+    <p class="eyebrow">Herramientas de datos para departamentos</p>
+    <h1>Reordena archivos de datos sin salir de tu navegador</h1>
+    <p class="lede">Carga uno o varios archivos, combínalos y límpialos, revisa el resultado y expórtalo de nuevo. Pensada para las tareas cotidianas con hojas de cálculo en docencia, investigación y administración. Ningún tipo de información es compartida por internet y todos los datos analizados se eliminan del explorador pulsando el botón del final de la página, haciendo un uso responsable de la protección de datos.</p>
+    <span class="privacy">Tus archivos no salen de este equipo</span>
+  </section>
+
+  <ol class="steps" aria-label="Progreso">
+    <li class="done">Archivos de origen</li>
+    <li class="now">Herramientas</li>
+    <li>Vista previa</li>
+    <li>Exportar</li>
+  </ol>
+</div>
+
+<main class="wrap">
+
+  <!-- 1 · Source files -->
+  <section class="card" id="sources" aria-labelledby="h-sources">
+    <div class="card-head"><h2 id="h-sources"><span class="num">1</span>Archivos de origen</h2><span class="hint">Añade aquí tus archivos .xlsx y .csv</span></div>
+    <label class="drop" id="drop" for="picker">
+      <span class="drop-icon" aria-hidden="true">&#8593;</span>
+      <strong>Suelta los archivos aquí o haz clic para elegirlos</strong>
+      <span>Puedes añadir varios archivos a la vez</span>
+    </label>
+    <input class="visually-hidden" id="picker" type="file" multiple accept=".csv,.tsv,.txt,.xlsx,text/csv">
+    <p class="msg" id="files-msg" role="alert"></p>
+    <ul class="files" id="files" aria-live="polite"></ul>
+    <div class="actions"><button class="btn ghost small" id="clear-all" type="button" hidden>Quitar todos</button></div>
+  </section>
+
+  <!-- 2 · Transform -->
+  <section class="card" id="transform" aria-labelledby="h-transform">
+    <div class="card-head"><h2 id="h-transform"><span class="num">2</span>Herramientas</h2></div>
+    <div class="ops" role="group" aria-label="Operaciones">
+      <button class="op" data-op="merge" type="button" aria-pressed="true"><span class="op-icon" aria-hidden="true">&#8853;</span><b>Marcar presencia</b><span>Pasa lista a partir de las tablas de Socrative</span></button>
+    </div>
+    <div id="panel-merge">
+      <p class="help" data-h="1" style="margin:0 0 12px">Los archivos cuyo nombre empieza por «Class» se asignan como <b>Class</b> (aportan los datos); el resto como <b>Listado</b> (recibe los datos). Puedes corregirlo en la lista de archivos. Elige en qué fila aparecen los encabezados de las columnas y qué columnas deben compararse.</p>
+      <div id="merge-ui"></div>
+    </div>
+  </section>
+
+  <!-- 3 · Preview -->
+  <section class="card" id="preview" aria-labelledby="h-preview">
+    <div class="card-head"><h2 id="h-preview"><span class="num">3</span>Vista previa</h2><span class="hint" id="prev-hint">Aún no hay resultado</span></div>
+    <div class="stats" id="prev-stats"></div>
+    <div id="prev-body"></div>
+    <div id="prev-notes"></div>
+  </section>
+
+  <!-- 4 · Export -->
+  <section class="card" id="export" aria-labelledby="h-export">
+    <div class="card-head"><h2 id="h-export"><span class="num">4</span>Exportar</h2><span class="hint">Elige un formato</span></div>
+    <div class="export-grid" role="radiogroup" aria-label="Formato de exportación">
+      <label class="format"><input type="radio" name="fmt" value="xlsx" checked><div><b>Excel (.xlsx)</b><span>Conserva el formato del Listado.</span></div></label>
+      <label class="format"><input type="radio" name="fmt" value="csv"><div><b>CSV (UTF-8)</b><span>Texto plano, se abre en cualquier programa.</span></div></label>
+    </div>
+    <div class="field" style="margin-top:16px;max-width:380px"><label for="out-name">Nombre del archivo</label><input id="out-name" type="text" value="resultado_combinado"></div>
+    <div class="note info"><span>El resultado se genera en tu navegador y se descarga directamente. No se envía nada por internet.</span></div>
+    <p class="msg" id="dl-msg" role="alert"></p>
+    <div class="actions"><button class="btn" id="dl" type="button" disabled>Descargar resultado</button><button class="btn danger" id="restart" type="button">Empezar de nuevo</button></div>
+  </section>
+  <!-- 5 · Borrar intermedios -->
+  <section class="card wipe" id="wipe" aria-labelledby="h-wipe">
+    <div class="card-head" style="justify-content:center"><h2 id="h-wipe"><span class="num" style="background:var(--red)">5</span>Borrar archivos intermedios</h2></div>
+    <p>Elimina de la memoria de esta pestaña los archivos cargados, los pasos, la vista previa y cualquier resultado generado. No toca los archivos originales de tu disco ni los que ya hayas descargado.</p>
+    <button class="wipe-btn" id="wipe-btn" type="button">Borrar todos los archivos intermedios<small>Se pedirá confirmación</small></button>
+    <div class="wipe-confirm" id="wipe-confirm" role="alertdialog" aria-labelledby="wipe-q" hidden>
+      <b id="wipe-q">¿Seguro? Esta acción no se puede deshacer.</b>
+      <div class="actions"><button class="btn danger" id="wipe-yes" type="button">Sí, borrar todo</button><button class="btn ghost" id="wipe-no" type="button">Cancelar</button></div>
+    </div>
+    <div class="note info wipe-done" id="wipe-done" role="status" hidden><span><b>Hecho.</b> Se han borrado los archivos cargados, los pasos y los resultados de la memoria de esta pestaña.</span></div>
+  </section>
+
+</main>
+
+<footer class="site-foot" id="about">
+  <div class="wrap credits">
+    <p class="credits-cap">Creada por:</p>
+    <p class="credits-name">Augusto Escalante Rodríguez</p>
+    <p class="credits-aff">Instituto de Neurociencias (CSIC-UMH), Universidad Miguel Hernández de Elche</p>
+    <p class="credits-links"><a href="https://github.com/auesro" target="_blank" rel="noopener noreferrer">GitHub</a><span aria-hidden="true"> · </span><a href="https://orcid.org/0000-0003-4955-6213" target="_blank" rel="noopener noreferrer">ORCID</a><span aria-hidden="true"> · </span><a href="https://x.com/Augusto_ER" target="_blank" rel="noopener noreferrer">Twitter</a></p>
+  </div>
+</footer>
+
+<script>
+var EN={
+/* static page */
+'Preparar':'Prepare','Acerca de':'About','Principal':'Main',
+'Herramientas de datos para departamentos':'Data tools for departments',
+'Reordena archivos de datos sin salir de tu navegador':'Rework data files without leaving your browser',
+'Carga uno o varios archivos, combínalos y límpialos, revisa el resultado y expórtalo de nuevo. Pensada para las tareas cotidianas con hojas de cálculo en docencia, investigación y administración. Ningún tipo de información es compartida por internet y todos los datos analizados se eliminan del explorador pulsando el botón del final de la página, haciendo un uso responsable de la protección de datos.':'Load one or more files, combine and clean them, review the result and export it again. Built for everyday spreadsheet tasks in teaching, research and administration. No information is shared over the internet and all analysed data is removed from the browser by pressing the button at the end of the page, making responsible use of data protection.',
+'Tus archivos no salen de este equipo':'Your files never leave this computer',
+'Progreso':'Progress','Archivos de origen':'Source files','Herramientas':'Tools','Vista previa':'Preview','Exportar':'Export',
+'Añade aquí tus archivos .xlsx y .csv':'Add your .xlsx and .csv files here',
+'Suelta los archivos aquí o haz clic para elegirlos':'Drop the files here or click to choose them',
+'Puedes añadir varios archivos a la vez':'You can add several files at once',
+'Quitar todos':'Remove all',
+'Elige qué hacer; los pasos se ejecutan en el orden en que los añades':'Choose what to do; steps run in the order you add them',
+'Operaciones':'Operations','Marcar presencia':'Mark attendance',
+'Pasa lista a partir de las tablas de Socrative':'Takes attendance from Socrative tables',
+'Aún no hay resultado':'No result yet',
+'Elige un formato':'Choose a format','Formato de exportación':'Export format',
+'Conserva el formato del Listado.':'Keeps the Listado formatting.',
+'CSV (UTF-8)':'CSV (UTF-8)','Texto plano, se abre en cualquier programa.':'Plain text, opens in any program.',
+'Nombre del archivo':'File name',
+'El resultado se genera en tu navegador y se descarga directamente. No se envía nada por internet.':'The result is generated in your browser and downloaded directly. Nothing is sent over the internet.',
+'Descargar resultado':'Download result','Empezar de nuevo':'Start over',
+'Borrar archivos intermedios':'Delete intermediate files',
+'Elimina de la memoria de esta pestaña los archivos cargados, los pasos, la vista previa y cualquier resultado generado. No toca los archivos originales de tu disco ni los que ya hayas descargado.':'Removes from this tab\'s memory the loaded files, the steps, the preview and any generated result. It does not touch the original files on your disk or those you have already downloaded.',
+'Borrar todos los archivos intermedios':'Delete all intermediate files','Se pedirá confirmación':'You will be asked to confirm',
+'¿Seguro? Esta acción no se puede deshacer.':'Are you sure? This cannot be undone.',
+'Sí, borrar todo':'Yes, delete everything','Cancelar':'Cancel',
+'Hecho.':'Done.','Se han borrado los archivos cargados, los pasos y los resultados de la memoria de esta pestaña.':'The loaded files, steps and results have been removed from this tab\'s memory.',
+'Creada por:':'Created by:',
+'resultado_combinado':'combined_result','_combinado':'_combined',
+'fila {0}':'row {0}','Idioma':'Language',
+'{0} por Nº expediente':'{0} by Nº expediente','{0} por DNI':'{0} by DNI','{0} por nombre':'{0} by name',
+'Información extraída (y fallida) de cada archivo de Socrative:':'Information extracted (and failed) from each Socrative file:',
+/* errors */
+'no es un archivo xlsx válido':'not a valid xlsx file','compresión ZIP no admitida':'unsupported ZIP compression','XML no válido dentro del xlsx':'invalid XML inside the xlsx',
+'no parece un libro de Excel (.xlsx)':'does not look like an Excel workbook (.xlsx)','el libro no contiene hojas legibles':'the workbook has no readable sheets',
+'«{0}»: el formato .xls antiguo no se puede leer. Ábrelo en Excel y guárdalo como .xlsx.':'"{0}": the old .xls format cannot be read. Open it in Excel and save it as .xlsx.',
+'«{0}»: formato no admitido (usa .xlsx o .csv).':'"{0}": unsupported format (use .xlsx or .csv).',
+'No se pudo generar el archivo: {0}':'The file could not be generated: {0}',
+/* warnings */
+'«{0}»: no se pudo leer una fecha en la celda A2 de su primera hoja ({1}). Escríbela a mano en su tarjeta.':'"{0}": no date could be read in cell A2 of its first sheet ({1}). Type it by hand in its card.',
+'vacía':'empty',
+'Dos columnas de Class se escriben en la misma columna del Listado («{0}»): la última sustituye a la anterior.':'Two Class columns are written to the same Listado column ("{0}"): the last one replaces the previous one.',
+/* file list & cards */
+'Función de {0}':'Role of {0}','Quitar {0}':'Remove {0}','Listado (recibe)':'Listado (receives)','Class (aporta)':'Class (provides)',
+'Hoja':'Sheet','Fila de encabezados':'Header row','Columna Nº expediente':'Nº EXPEDIENTE column','Columna clave (índice)':'Key column (index)',
+'Se ignoran los ceros a la izquierda.':'Leading zeros are ignored.','Columna DNI':'DNI column','(ninguna)':'(none)','(columna {0})':'(column {0})',
+'Se usa cuando la clave de Class es un número de más de 5 cifras.':'Used when the Class key is a number with more than 5 digits.',
+'Columna NOMBRE':'NOMBRE column','Se usa cuando la clave de Class es un texto (nombre).':'Used when the Class key is text (a name).',
+'Fecha (celda A2 de la primera hoja)':'Date (cell A2 of the first sheet)','Se añade sin hora: {0}':'Added without time: {0}','No se reconoce como fecha.':'Not recognised as a date.',
+'Columnas de este archivo que se incorporan al Listado':'Columns of this file added to the Listado',
+'Destino de {0}':'Destination of {0}','Columna nueva al final':'New column at the end','Escribir en «{0}»':'Write into "{0}"','Nombre de la columna nueva':'New column name',
+'Carga arriba el archivo Listado (el que recibe los datos) y uno o varios archivos Class (los que los aportan).':'Load the Listado file (the one that receives the data) and one or more Class files (the ones that provide it) above.',
+'Tipo de combinación':'Combination type',
+'Marcar presencia: columna con la fecha de cada Class (1 = presente, 0 = no)':'Mark attendance: one column per Class dated (1 = present, 0 = not)',
+'Traer columnas de Class al Listado':'Bring Class columns into the Listado',
+'Añade al menos un archivo Class para poder combinar.':'Add at least one Class file to be able to combine.',
+'Cada archivo Class añade una columna al Listado (en la columna I o la siguiente vacía) con la fecha de su celda A2 como encabezado: 0 en todas las filas con clave, y 1 si la clave de Class se encuentra en el Listado.':'Each Class file adds one column to the Listado (in column I or the next empty one) with the date of its cell A2 as header: 0 in every row with a key, and 1 if the Class key is found in the Listado.',
+'Valor si la clave no aparece en Class':'Value if the key is not in Class','Por defecto, 0.':'Default: 0.',
+/* preview */
+'Marca al menos una columna de Class para incorporarla al Listado.':'Tick at least one Class column to add it to the Listado.',
+'Carga los archivos y elige las columnas para ver aquí el resultado.':'Load the files and choose the columns to see the result here.',
+'Todas las filas · doble clic en una celda añadida para modificarla':'All rows · double-click an added cell to edit it',
+'filas del Listado con clave':'Listado rows with a key','con algún 1':'with at least one 1','solo con 0':'with only 0s','columnas de fecha añadidas':'date columns added',
+'con coincidencia en Class':'matched in Class','sin coincidencia (se rellenan con {0})':'unmatched (filled with {0})','columnas incorporadas':'columns added',
+'Ordenar por esta columna':'Sort by this column','Doble clic para modificar este valor':'Double-click to edit this value','Vista previa del resultado':'Result preview','Modificar valor':'Edit value',
+'Modificado a mano: ':'Edited by hand: ','{0} valor(es) (en azul en la tabla); se guardarán en el archivo exportado.':'{0} value(s) (in blue in the table); they will be saved in the exported file.',
+'Deshacer cambios manuales':'Undo manual changes',
+'Atención: ':'Warning: ','{0} coincidencia(s) tienen la celda vacía en Class; se deja vacía en el Listado.':'{0} match(es) have an empty cell in Class; it is left empty in the Listado.',
+'Claves repetidas en el Listado: ':'Repeated keys in the Listado: ','{0} clave(s) están repetidas en el Listado.':'{0} key(s) are repeated in the Listado.',
+' y ':' and ','{0} por Nº expediente; {1} por DNI; {2} por nombre.':'{0} by Nº expediente; {1} by DNI; {2} by name.',
+'revisa las {0} coincidencias por nombre':'check the {0} name matches',
+'claves repetidas (cuenta la que tiene respuestas): ':'repeated keys (the one with answers counts): ','fila {0} («{1}»)':'row {0} ("{1}")','{0} → cuenta la fila {1}':'{0} → row {1} counts',
+'nombres con varias coincidencias posibles, no se marcan: ':'names with several possible matches, not marked: ',
+'{0} clave(s) no encontradas en el Listado ({1}): {2}.':'{0} key(s) not found in the Listado ({1}): {2}.','ni por {0}':'nor by {0}',
+'{0} clave(s) de Class que no están en el Listado':'{0} Class key(s) not in the Listado',
+'Filas de Class con clave repetida':'Class rows with repeated key'
+};
+
+(function(){
+'use strict';
+/* Todo ocurre en este navegador: ningún archivo se envía a ningún sitio (la política de seguridad de la página lo impide). */
+var $=function(id){return document.getElementById(id);};
+var T=window.Tabula={files:[],seq:0,out:null,urls:[],fill:0,mode:'att',dniMin:4,hl:{},manual:{}};
+var LANG='es';
+function _t(k){var a=arguments,s=(LANG==='en'&&EN[k]!==undefined)?EN[k]:k;return s.replace(/\{(\d+)\}/g,function(m,i){return a[+i+1]===undefined?'':a[+i+1];});}
+function q(x){return LANG==='en'?'"'+x+'"':'«'+x+'»';}
+function mkErr(msg){var e=new Error(msg);e.args=Array.prototype.slice.call(arguments,1);return e;}
+var dec=new TextDecoder('utf-8'),enc=new TextEncoder();
+
+/* ===================== utilidades ===================== */
+function h(tag,props){
+  var e=document.createElement(tag);
+  if(props)for(var k in props){
+    if(k==='text')e.textContent=props[k];
+    else if(k==='class')e.className=props[k];
+    else if(k==='on'){for(var ev in props.on)e.addEventListener(ev,props.on[ev]);}
+    else if(props[k]===false||props[k]===null||props[k]===undefined){}
+    else e.setAttribute(k,props[k]===true?'':props[k]);
+  }
+  for(var i=2;i<arguments.length;i++){var c=arguments[i];if(c==null)continue;e.appendChild(typeof c==='string'?document.createTextNode(c):c);}
+  return e;
+}
+function colName(i){var s='';i++;while(i>0){var m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;}
+function colIndex(letters){var n=0;for(var i=0;i<letters.length;i++)n=n*26+letters.charCodeAt(i)-64;return n-1;}
+function isEmpty(v){return v===null||v===undefined||(typeof v==='string'&&v.trim()==='');}
+function fmt(v){if(v===null||v===undefined)return '';if(typeof v==='number')return String(+v.toFixed(10));return String(v);}
+/* clave numérica: se ignoran los ceros a la izquierda; lo que no sea un entero se descarta */
+function norm(v){
+  if(isEmpty(v))return null;
+  var s;
+  if(typeof v==='number'){if(!isFinite(v)||Math.floor(v)!==v)return null;s=String(v);}
+  else{s=String(v).trim();var m=/^(\d+)[.,]0+$/.exec(s);if(m)s=m[1];if(!/^\d+$/.test(s))return null;}
+  return s.replace(/^0+(?=\d)/,'');
+}
+function numify(v){
+  if(typeof v!=='string')return v;
+  var t=v.trim();
+  if(/^-?\d+([.,]\d+)?$/.test(t)&&!/^-?0\d/.test(t))return Number(t.replace(',','.'));
+  return v;
+}
+function baseName(n){return n.replace(/\.[^.]+$/,'');}
+
+/* ===================== ZIP (lectura y escritura) ===================== */
+async function inflateRaw(u8){
+  var s=new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+async function readZip(buf){
+  var u8=new Uint8Array(buf),dv=new DataView(buf),e=u8.length-22;
+  while(e>=0&&dv.getUint32(e,true)!==0x06054b50)e--;
+  if(e<0)throw new Error('no es un archivo xlsx válido');
+  var cnt=dv.getUint16(e+10,true),p=dv.getUint32(e+16,true),out=[];
+  for(var i=0;i<cnt;i++){
+    if(dv.getUint32(p,true)!==0x02014b50)break;
+    var method=dv.getUint16(p+10,true),csz=dv.getUint32(p+20,true),nl=dv.getUint16(p+28,true),el=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),lo=dv.getUint32(p+42,true);
+    var name=dec.decode(u8.subarray(p+46,p+46+nl));p+=46+nl+el+cl;
+    var start=lo+30+dv.getUint16(lo+26,true)+dv.getUint16(lo+28,true),raw=u8.subarray(start,start+csz);
+    if(name.charAt(name.length-1)==='/')continue;
+    if(method===0)out.push({name:name,data:raw});
+    else if(method===8)out.push({name:name,data:await inflateRaw(raw)});
+    else throw new Error('compresión ZIP no admitida');
+  }
+  return out;
+}
+var CRC=(function(){var t=new Uint32Array(256);for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function crc32(u8){var c=0xFFFFFFFF;for(var i=0;i<u8.length;i++)c=CRC[(c^u8[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;}
+function writeZip(files){
+  var parts=[],cd=[],off=0,cdSize=0;
+  files.forEach(function(f){
+    var nb=enc.encode(f.name),crc=crc32(f.data),sz=f.data.length,lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(12,0x2821,true);
+    lh.setUint32(14,crc,true);lh.setUint32(18,sz,true);lh.setUint32(22,sz,true);lh.setUint16(26,nb.length,true);
+    parts.push(new Uint8Array(lh.buffer),nb,f.data);
+    var ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(14,0x2821,true);
+    ch.setUint32(16,crc,true);ch.setUint32(20,sz,true);ch.setUint32(24,sz,true);ch.setUint16(28,nb.length,true);ch.setUint32(42,off,true);
+    cd.push(new Uint8Array(ch.buffer),nb);off+=30+nb.length+sz;cdSize+=46+nb.length;
+  });
+  var eo=new DataView(new ArrayBuffer(22));
+  eo.setUint32(0,0x06054b50,true);eo.setUint16(8,files.length,true);eo.setUint16(10,files.length,true);eo.setUint32(12,cdSize,true);eo.setUint32(16,off,true);
+  var all=parts.concat(cd,[new Uint8Array(eo.buffer)]),out=new Uint8Array(off+cdSize+22),q=0;
+  all.forEach(function(a){out.set(a,q);q+=a.length;});
+  return out;
+}
+
+/* ===================== lectura de xlsx ===================== */
+function parseXml(u8){
+  var d=new DOMParser().parseFromString(dec.decode(u8),'application/xml');
+  if(d.getElementsByTagName('parsererror').length)throw new Error('XML no válido dentro del xlsx');
+  return d;
+}
+function els(node,name){return Array.prototype.slice.call(node.getElementsByTagNameNS('*',name));}
+function textOf(si){
+  var out='';
+  els(si,'t').forEach(function(t){var p=t.parentNode;if(p&&p.localName==='rPh')return;out+=t.textContent;});
+  return out;
+}
+var BUILTIN_DATE={'14':'dd/mm/yyyy','15':'d-mmm-yy','16':'d-mmm','17':'mmm-yy','22':'dd/mm/yyyy'};
+function dateFormatOf(id,custom){
+  if(BUILTIN_DATE[id])return BUILTIN_DATE[id];
+  var code=custom[id];if(!code)return null;
+  var c=code.replace(/\[[^\]]*\]/g,'').replace(/"[^"]*"/g,'').replace(/\\(.)/g,'$1').replace(/[_*].?/g,'');
+  c=c.split(';')[0].split(/\s+(?=[hH])/)[0];
+  return /[dy]/i.test(c)?c:null;
+}
+var MES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'],DIA=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+function fmtExcelDate(serial,code){
+  var d=new Date(Math.floor(serial-25569)*86400000),y=d.getUTCFullYear(),m=d.getUTCMonth(),dd=d.getUTCDate(),w=d.getUTCDay();
+  var p=function(n){return(n<10?'0':'')+n;};
+  return code.replace(/yyyy|yy|mmmm|mmm|mm|m|dddd|ddd|dd|d/gi,function(t){
+    switch(t.toLowerCase()){
+      case 'yyyy':return String(y);case 'yy':return String(y).slice(-2);
+      case 'mmmm':return MES[m];case 'mmm':return MES[m].slice(0,3);case 'mm':return p(m+1);case 'm':return String(m+1);
+      case 'dddd':return DIA[w];case 'ddd':return DIA[w].slice(0,3);case 'dd':return p(dd);default:return String(dd);
+    }
+  });
+}
+var REL_NS='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+async function openXlsx(buf){
+  var entries=await readZip(buf),by={};
+  entries.forEach(function(e){by[e.name]=e;});
+  if(!by['xl/workbook.xml'])throw new Error('no parece un libro de Excel (.xlsx)');
+  var wb=parseXml(by['xl/workbook.xml'].data),rels={};
+  if(by['xl/_rels/workbook.xml.rels'])els(parseXml(by['xl/_rels/workbook.xml.rels'].data),'Relationship').forEach(function(r){rels[r.getAttribute('Id')]=r.getAttribute('Target');});
+  var sheets=els(wb,'sheet').map(function(s){
+    var t=rels[s.getAttributeNS(REL_NS,'id')]||'';
+    t=t.charAt(0)==='/'?t.slice(1):'xl/'+t.replace(/^\.\//,'');
+    return{name:s.getAttribute('name'),path:t};
+  }).filter(function(s){return by[s.path];});
+  if(!sheets.length)throw new Error('el libro no contiene hojas legibles');
+  var sst=[];
+  if(by['xl/sharedStrings.xml'])els(parseXml(by['xl/sharedStrings.xml'].data),'si').forEach(function(si){sst.push(textOf(si));});
+  var xfFmt=[];
+  if(by['xl/styles.xml']){
+    try{
+      var st=parseXml(by['xl/styles.xml'].data),nf={};
+      els(st,'numFmt').forEach(function(n){nf[n.getAttribute('numFmtId')]=n.getAttribute('formatCode');});
+      var cx=els(st,'cellXfs')[0];
+      if(cx)els(cx,'xf').forEach(function(xf,i){xfFmt[i]=dateFormatOf(xf.getAttribute('numFmtId'),nf);});
+    }catch(e){}
+  }
+  return{entries:entries,by:by,sheets:sheets,sst:sst,xfFmt:xfFmt};
+}
+function readSheet(x,idx){
+  var doc=parseXml(x.by[x.sheets[idx].path].data),grid=[],rowNo=0;
+  els(doc,'row').forEach(function(row){
+    var r=row.getAttribute('r');rowNo=r?parseInt(r,10):rowNo+1;
+    var arr=grid[rowNo-1]=grid[rowNo-1]||[],colNo=-1;
+    els(row,'c').forEach(function(c){
+      var ref=c.getAttribute('r'),m=ref&&/^([A-Z]+)/.exec(ref);
+      colNo=m?colIndex(m[1]):colNo+1;
+      var t=c.getAttribute('t'),vEl=els(c,'v')[0],v=vEl?vEl.textContent:null,val=null;
+      if(t==='inlineStr'){var is=els(c,'is')[0];val=is?textOf(is):'';}
+      else if(v===null)val=null;
+      else if(t==='s')val=x.sst[parseInt(v,10)];
+      else if(t==='b')val=v==='1';
+      else if(t==='str'||t==='e')val=v;
+      else if(v==='')val=null;
+      else{val=Number(v);var sx=c.getAttribute('s'),fc=sx!==null?x.xfFmt[+sx]:null;if(fc&&isFinite(val)){var ds=new String(fmtExcelDate(val,fc));ds.serial=val;ds.fc=fc;val=ds;}}
+      arr[colNo]=val===undefined?null:val;
+    });
+  });
+  for(var i=0;i<grid.length;i++)if(!grid[i])grid[i]=[];
+  return grid;
+}
+
+/* ===================== lectura de CSV ===================== */
+function decodeText(buf){
+  var u8=new Uint8Array(buf);
+  if(u8[0]===0xEF&&u8[1]===0xBB&&u8[2]===0xBF)u8=u8.subarray(3);
+  var t=dec.decode(u8);
+  if(t.indexOf('�')>=0)t=new TextDecoder('windows-1252').decode(u8);
+  return t;
+}
+function parseCsv(text){
+  var first=text.split(/\r?\n/)[0]||'',best=',',bc=-1;
+  [',',';','\t'].forEach(function(d){var n=first.split(d).length;if(n>bc){bc=n;best=d;}});
+  var rows=[],row=[],cell='',q=false;
+  for(var i=0;i<text.length;i++){
+    var ch=text.charAt(i);
+    if(q){if(ch==='"'){if(text.charAt(i+1)==='"'){cell+='"';i++;}else q=false;}else cell+=ch;}
+    else if(ch==='"')q=true;
+    else if(ch===best){row.push(cell);cell='';}
+    else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&text.charAt(i+1)==='\n')i++;row.push(cell);rows.push(row);row=[];cell='';}
+    else cell+=ch;
+  }
+  if(cell!==''||row.length){row.push(cell);rows.push(row);}
+  rows=rows.map(function(r){return r.map(function(c){return c===''?null:c;});});
+  return{rows:rows,delim:best};
+}
+
+/* ===================== archivos cargados ===================== */
+function nonEmptyCount(row){var n=0;(row||[]).forEach(function(v){if(!isEmpty(v))n++;});return n;}
+function guessHeader(grid){
+  var lim=Math.min(grid.length,25),mx=0,i;
+  for(i=0;i<lim;i++)mx=Math.max(mx,nonEmptyCount(grid[i]));
+  for(i=0;i<lim;i++){
+    var row=grid[i]||[],n=nonEmptyCount(row),str=0;
+    row.forEach(function(v){if(typeof v==='string'&&v.trim()!=='')str++;});
+    if(n>=2&&n>=0.6*mx&&str===n)return i+1;
+  }
+  var best=1,bc=0;
+  for(i=0;i<lim;i++){var c=nonEmptyCount(grid[i]);if(c>bc){bc=c;best=i+1;}}
+  return best;
+}
+function headers(f){
+  var row=f.grid[f.hdr-1]||[],w=0;
+  for(var i=0;i<row.length;i++)if(!isEmpty(row[i]))w=i+1;
+  var out=[];
+  for(var c=0;c<w;c++)out.push(isEmpty(row[c])?_t('(columna {0})',colName(c)):fmt(row[c]).trim());
+  return out;
+}
+function dataRows(f){var out=[];for(var r=f.hdr;r<f.grid.length;r++)if(nonEmptyCount(f.grid[r]))out.push(r);return out;}
+var MONTHS={january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12,enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12,jan:1,feb:2,mar:3,apr:4,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12,ene:1,abr:4,ago:8,dic:12};
+function mkDate(y,m,d){
+  if(!(y>=1900&&y<=2200&&m>=1&&m<=12&&d>=1&&d<=31))return null;
+  var ms=Date.UTC(y,m-1,d),dt=new Date(ms);if(dt.getUTCMonth()!==m-1)return null;
+  var p=function(n){return(n<10?'0':'')+n;};
+  return{text:p(d)+'/'+p(m)+'/'+y,serial:ms/86400000+25569};
+}
+/* devuelve la fecha sin hora (texto dd/mm/aaaa y número de serie de Excel) o null */
+function parseDate(v){
+  if(v===null||v===undefined||v==='')return null;
+  if(typeof v==='object'&&v.serial!==undefined)v=v.serial;
+  if(typeof v==='number'){if(v>20000&&v<80000){var d=new Date(Math.floor(v-25569)*86400000);return mkDate(d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate());}return null;}
+  var t=String(v).trim(),m;
+  if((m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t)))return mkDate(+m[1],+m[2],+m[3]);
+  if((m=/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/.exec(t)))return mkDate(+m[3],+m[2],+m[1]);
+  if((m=/^([A-Za-zÀ-ÿ]+)\.?\s+(\d{1,2}),?\s+(\d{4})/.exec(t))&&MONTHS[m[1].toLowerCase()])return mkDate(+m[3],MONTHS[m[1].toLowerCase()],+m[2]);
+  if((m=/^(\d{1,2})\s+(?:de\s+)?([A-Za-zÀ-ÿ]+)\.?,?\s+(?:de\s+)?(\d{4})/.exec(t))&&MONTHS[m[2].toLowerCase()])return mkDate(+m[3],MONTHS[m[2].toLowerCase()],+m[1]);
+  return null;
+}
+function loadSheet(f){
+  f.grid=f.kind==='xlsx'?readSheet(f.x,f.sheetIdx):f.csv.rows;
+  f.hdr=guessHeader(f.grid);f.keyAuto=true;f.picks={};
+}
+async function addFile(file){
+  var ext=(file.name.split('.').pop()||'').toLowerCase();
+  if(ext==='xls')throw mkErr('«{0}»: el formato .xls antiguo no se puede leer. Ábrelo en Excel y guárdalo como .xlsx.',file.name);
+  if(['xlsx','csv','tsv','txt'].indexOf(ext)<0)throw mkErr('«{0}»: formato no admitido (usa .xlsx o .csv).',file.name);
+  var buf=await file.arrayBuffer(),f={id:++T.seq,name:file.name,ext:ext,size:file.size,buf:buf,sheetIdx:0};
+  if(ext==='xlsx'){f.kind='xlsx';f.x=await openXlsx(buf);}
+  else{f.kind='csv';f.csv=parseCsv(decodeText(buf));}
+  loadSheet(f);
+  var g0=f.kind==='xlsx'?readSheet(f.x,0):f.csv.rows;f.dateSrc=(g0[1]&&g0[1][0]!==undefined)?g0[1][0]:null;
+  autoRole(f);
+  T.files.push(f);
+}
+/* Listado = archivo cuyo nombre contiene «Listado»; si no aparece, el que no empieza por «Class» */
+function autoRole(f){
+  var isL=/listado/i.test(f.name),isC=/^class/i.test(f.name),A=fileA();
+  if(isL){
+    if(!A||(!A.roleManual&&!/listado/i.test(A.name))){if(A)A.role='B';f.role='A';}else f.role='B';
+  }else if(isC)f.role='B';
+  else f.role=A?'B':'A';
+}
+function fileA(){return T.files.filter(function(f){return f.role==='A';})[0]||null;}
+function filesB(){return T.files.filter(function(f){return f.role==='B';});}
+
+/* ===================== sugerencias automáticas de columna clave ===================== */
+function keySet(f,col){var s={};dataRows(f).forEach(function(r){var k=norm(f.grid[r][col]);if(k!==null)s[k]=1;});return s;}
+function autoKeys(){
+  var A=fileA();
+  if(A&&A.keyAuto){
+    var hs=headers(A),pick=-1;
+    for(var i=0;i<hs.length;i++)if(/exped|matr[ií]c|^id\b|\bid$|dni|clave|c[oó]digo|\bkey\b/i.test(hs[i])){pick=i;break;}
+    if(pick<0){var bs=-1;for(var c=0;c<hs.length;c++){var n=Object.keys(keySet(A,c)).length;if(n>bs){bs=n;pick=c;}}}
+    A.keyCol=pick>=0?pick:0;
+  }
+  if(A&&A.dniAuto!==false){
+    var hs2=headers(A),dn=-1;
+    for(var q=0;q<hs2.length;q++)if(/\b(dni|nif|nie|documento)\b/i.test(hs2[q])){dn=q;break;}
+    A.dniCol=dn;
+  }
+  if(A&&A.nameAuto!==false){
+    var hs3=headers(A),nm=-1;
+    for(var q2=0;q2<hs3.length;q2++)if(/nombre|name|alumn/i.test(hs3[q2])){nm=q2;break;}
+    A.nameCol=nm;
+  }
+  var ak=A?keySet(A,A.keyCol):null;
+  if(ak&&T.mode==='att'&&A.dniCol>=0){var dk=keySet(A,A.dniCol);for(var kk in dk)ak[kk]=1;}
+  filesB().forEach(function(f){
+    if(!f.keyAuto&&f.keyCol!==undefined)return;
+    var hs=headers(f),pick=0,bs=-1;
+    for(var c=0;c<hs.length;c++){
+      var ks=keySet(f,c),n=0;
+      if(ak)for(var k in ks)if(ak[k])n++;else{}
+      else n=Object.keys(ks).length;
+      if(n>bs){bs=n;pick=c;}
+    }
+    f.keyCol=pick;
+  });
+}
+
+/* ===================== combinación ===================== */
+function words(v){
+  return String(v).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[,.]/g,' ').split(/\s+/).filter(Boolean);
+}
+/* Clasifica la clave de B: número (solo cifras) o texto */
+function classify(v){
+  if(isEmpty(v))return null;
+  if(typeof v==='number'){if(isFinite(v)&&Math.floor(v)===v&&v>=0)return{t:'num',d:String(v)};return null;}
+  var t=String(v).trim(),m=/^(\d+)(?:[.,]0+)?$/.exec(t);
+  if(m)return{t:'num',d:m[1]};
+  if(/^[A-Za-z0-9]+$/.test(t)&&/\d/.test(t)&&/[A-Za-z]/.test(t))return{t:'alnum',u:t.toUpperCase(),raw:t};
+  var w=words(t);return w.length?{t:'txt',w:w,raw:t}:null;
+}
+function timeFrac(v){
+  var m=/(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?/.exec(String(v===null||v===undefined?'':v));
+  if(!m)return 0;var h2=+m[1];if(m[3]){var pm=/p/i.test(m[3]);if(pm&&h2<12)h2+=12;if(!pm&&h2===12)h2=0;}
+  return(h2*60+ +m[2])/1440;
+}
+function computeAtt(A,Bs){
+  /* las columnas se añaden por orden cronológico creciente (los Class sin fecha, al final) */
+  Bs=Bs.map(function(b,i){var d=b.dateOverride!==undefined?parseDate(b.dateOverride):parseDate(b.dateSrc);return{b:b,i:i,k:d?d.serial+(b.dateOverride!==undefined?0:timeFrac(b.dateSrc)):Infinity};})
+    .sort(function(x,y){return x.k===y.k?x.i-y.i:(x.k<y.k?-1:1);}).map(function(x){return x.b;});
+  var aAll=dataRows(A),aRows=[],aKeys={},dniMap={},lastKey=-1;
+  aAll.forEach(function(r){var k=norm(A.grid[r][A.keyCol]);if(k!==null){aRows.push({r:r,k:k});lastKey=r;if(aKeys[k]===undefined)aKeys[k]=r;}});
+  var fillRows=aAll.filter(function(r){return r<=lastKey;});
+  if(A.dniCol>=0)aAll.forEach(function(r){var k=norm(A.grid[r][A.dniCol]);if(k!==null&&dniMap[k]===undefined)dniMap[k]=r;});
+  var dniRaw={},dniStr={},names=[];
+  if(A.dniCol>=0)aAll.forEach(function(r){var v=A.grid[r][A.dniCol];if(isEmpty(v))return;var t=String(v).trim();if(/^\d+$/.test(t)){if(dniRaw[t]===undefined)dniRaw[t]=r;var z=t.replace(/^0+/,'');if(dniStr[z]===undefined)dniStr[z]=r;}});
+  var dniAl={},dniNoL={};
+  if(A.dniCol>=0)aAll.forEach(function(r){var v=A.grid[r][A.dniCol];if(isEmpty(v))return;var u=String(v).trim().toUpperCase();if(dniAl[u]===undefined)dniAl[u]=r;if(/^[A-Z0-9]*\d[A-Z]$/.test(u)){var q=u.slice(0,-1);if(dniNoL[q]===undefined)dniNoL[q]=r;}});
+  if(A.nameCol>=0)aAll.forEach(function(r){var v=A.grid[r][A.nameCol];if(!isEmpty(v)){var w=words(v);if(w.length)names.push({r:r,w:w,raw:String(v)});}});
+  var taken={},items=[],warns=[],edits=[],marked={},bstats=[];
+  function used(c){
+    if(taken[c])return true;
+    if(!isEmpty((A.grid[A.hdr-1]||[])[c]))return true;
+    return fillRows.some(function(r){return !isEmpty(A.grid[r][c]);});
+  }
+  Bs.forEach(function(b,bi){
+    var d=b.dateOverride!==undefined?parseDate(b.dateOverride):parseDate(b.dateSrc),c=8;
+    if(!d)warns.push(_t('«{0}»: no se pudo leer una fecha en la celda A2 de su primera hoja ({1}). Escríbela a mano en su tarjeta.',b.name,(b.dateSrc===null||b.dateSrc===undefined?_t('vacía'):q(fmt(b.dateSrc)))));
+    var hr=A.grid[A.hdr-1]||[],hf=null;for(var hi=hr.length-1;hi>=0;hi--){if(!isEmpty(hr[hi])){if(hr[hi]&&hr[hi].fc)hf=hr[hi].fc;break;}}
+    var label=d?(hf?fmtExcelDate(d.serial,hf):d.text):(b.dateOverride||('Class '+(bi+1)));
+    while(used(c))c++;
+    taken[c]=1;
+    items.push({b:b,bi:bi,col:-1,dest:'new',destCol:c,name:label,serial:d?d.serial:undefined});
+    var idx={};
+    fillRows.forEach(function(r){idx[r]=edits.length;edits.push({r:r,c:c,v:0,kind:'fill'});});
+    var gmap={},groups=[],dupList=[],byExp=0,byDni=0,byName=0,notFound=[],ambiguous=[],nameMatches=[],ignored=0,dup=0,rows=0;
+    function mark(ar){if(ar===undefined||idx[ar]===undefined)return false;edits[idx[ar]].v=1;edits[idx[ar]].kind='new';marked[ar]=1;return true;}
+    dataRows(b).forEach(function(r){
+      var c0=classify(b.grid[r][b.keyCol]);
+      if(c0===null||(c0.raw&&/^\s*(class scoring|report generated|elvira8315\s*$)/i.test(c0.raw))){ignored++;return;}
+      rows++;
+      var id=c0.t==='num'?'n'+c0.d.replace(/^0+(?=\d)/,''):(c0.t==='alnum'?'a'+c0.u:'t'+c0.w.slice().sort().join(' '));
+      if(gmap[id]){dup++;gmap[id].rows.push(r);return;}
+      gmap[id]={c0:c0,label:c0.t==='num'?c0.d:c0.raw,rows:[r]};groups.push(gmap[id]);
+    });
+    groups.forEach(function(g){
+      var c0=g.c0,label=g.label,pick=g.rows[0];
+      for(var gi=0;gi<g.rows.length;gi++)if(!isEmpty(b.grid[g.rows[gi]][4])){pick=g.rows[gi];break;}
+      if(g.rows.length>1)dupList.push({k:label,chosen:pick+1,rows:g.rows.map(function(r){return{row:r+1,v:fmt(b.grid[r][b.keyCol])};})});
+      if(c0.t==='num'){
+        var d=c0.d,len=d.length,ar;
+        if(len>5){
+          var z=/^00/.test(d)?d.replace(/^0+/,''):d;
+          ar=dniRaw[z];if(ar===undefined)ar=dniStr[z.replace(/^0+/,'')];
+          if(ar!==undefined&&mark(ar)){byDni++;return;}
+        }else{
+          var e5=(len===5&&d.charAt(0)==='0')?d.slice(1):d;
+          ar=aKeys[norm(e5)];
+          if(ar!==undefined&&mark(ar)){byExp++;return;}
+        }
+        notFound.push(label);return;
+      }
+      if(c0.t==='alnum'){
+        var u=c0.u,ar2=dniAl[u];
+        if(ar2===undefined&&/^[A-Z0-9]*\d[A-Z]$/.test(u)){var q=u.slice(0,-1);ar2=dniAl[q];if(ar2===undefined)ar2=dniNoL[q];}
+        if(ar2!==undefined&&mark(ar2)){byDni++;return;}
+        notFound.push(label);return;
+      }
+      /* texto: mayor coincidencia de palabras en NOMBRE (sin importar orden, mayúsculas ni signos , .) */
+      var best=null,second=null,scored=[];
+      names.forEach(function(n){
+        var set={};n.w.forEach(function(x){set[x]=1;});
+        var com=0;c0.w.forEach(function(x){if(set[x])com++;});
+        if(!com)return;
+        var sc=[com/c0.w.length,com/Math.max(n.w.length,c0.w.length),com];
+        scored.push({n:n,sc:sc});
+        if(!best||sc[0]>best.sc[0]||(sc[0]===best.sc[0]&&sc[1]>best.sc[1])){second=best;best={n:n,sc:sc};}
+        else if(!second||sc[0]>second.sc[0]||(sc[0]===second.sc[0]&&sc[1]>second.sc[1]))second=best&&best.n===n?second:{n:n,sc:sc};
+      });
+      if(!best||best.sc[0]<0.6||(c0.w.length>1&&best.sc[2]<2)){notFound.push(label);return;}
+      if(second&&second.sc[0]===best.sc[0]&&second.sc[1]===best.sc[1]){ambiguous.push({k:label,c:scored.filter(function(x){return x.sc[0]===best.sc[0]&&x.sc[1]===best.sc[1];}).map(function(x){return x.n.raw.replace(/\s+/g,' ').trim()+' ('+_t('fila {0}',x.n.r+1)+')';})});return;}
+      if(mark(best.n.r)){byName++;nameMatches.push({b:label,a:best.n.raw,pct:Math.round(best.sc[0]*100)});}
+      else notFound.push(label);
+    });
+    bstats.push({name:b.name,rows:rows,ignored:ignored,dup:dup,notInA:notFound,byExp:byExp,byDni:byDni,byName:byName,ambiguous:ambiguous,nameMatches:nameMatches,dupList:dupList});
+  });
+  var hdrEdits=items.map(function(it){return{r:A.hdr-1,c:it.destCol,v:it.name,serial:it.serial};});
+  var grid=A.grid.map(function(r){return r.slice();});
+  hdrEdits.forEach(function(e){(grid[e.r]=grid[e.r]||[])[e.c]=e.v;});
+  edits.forEach(function(e){(grid[e.r]=grid[e.r]||[])[e.c]=e.v;});
+  for(var i=0;i<grid.length;i++){if(!grid[i])grid[i]=[];for(var j=0;j<grid[i].length;j++)if(grid[i][j]===undefined)grid[i][j]=null;}
+  var dupA=0,cnt={},byK={},dupAList=[];aRows.forEach(function(a){cnt[a.k]=(cnt[a.k]||0)+1;(byK[a.k]=byK[a.k]||[]).push(a.r);});
+  for(var k in cnt)if(cnt[k]>1){dupA++;dupAList.push({k:k,rows:byK[k].map(function(r){return _t('fila {0}',r+1)+(A.nameCol>=0&&!isEmpty(A.grid[r][A.nameCol])?' ('+String(A.grid[r][A.nameCol]).replace(/\s+/g,' ').trim()+')':'');})});}
+  var n=Object.keys(marked).length;
+  return{mode:'att',A:A,Bs:Bs,items:items,ready:true,warns:warns,edits:edits,hdrEdits:hdrEdits,grid:grid,aRows:fillRows.map(function(r){return{r:r};}),
+    stats:{aRows:fillRows.length,matched:n,unmatched:fillRows.length-n,emptyVals:0,dupA:dupA,dupAList:dupAList,b:bstats}};
+}
+function compute(){
+  var r=computeInner();
+  if(!r||!r.ready)return r;
+  var byCol={};r.items.forEach(function(it){byCol[it.destCol]=it;});
+  r.editMap={};r.manualCount=0;
+  r.edits.forEach(function(e){
+    r.editMap[e.r+':'+e.c]=e;
+    var it=byCol[e.c],key=it?it.b.name+'|'+it.name+'|'+e.r:null;
+    e.orig=e.v;e.origKind=e.kind;
+    if(key&&T.manual[key]!==undefined){
+      var v=T.manual[key];
+      e.v=v;e.kind=v===null?'empty':'manual';e.manual=true;r.manualCount++;
+      (r.grid[e.r]=r.grid[e.r]||[])[e.c]=v;
+    }
+  });
+  return r;
+}
+function computeInner(){
+  var A=fileA(),Bs=filesB();
+  if(!A||!Bs.length||A.keyCol===undefined)return null;
+  if(T.mode==='att')return computeAtt(A,Bs);
+  var items=[],warns=[],width=headers(A).length,hsA=headers(A);
+  Bs.forEach(function(b,bi){
+    var hs=headers(b);
+    Object.keys(b.picks).forEach(function(ci){
+      var p=b.picks[ci];if(!p||!p.on||+ci===b.keyCol)return;
+      items.push({b:b,bi:bi,col:+ci,dest:p.dest,name:p.name||hs[+ci],srcName:hs[+ci]});
+    });
+  });
+  if(!items.length)return{A:A,Bs:Bs,items:[],ready:false};
+  var nextNew=width;
+  items.forEach(function(it){it.destCol=(it.dest==='new')?nextNew++:+it.dest;});
+  var seenDest={};
+  items.forEach(function(it){
+    if(seenDest[it.destCol])warns.push(_t('Dos columnas de Class se escriben en la misma columna del Listado («{0}»): la última sustituye a la anterior.',(it.dest==='new'?it.name:hsA[it.destCol])));
+    seenDest[it.destCol]=1;
+  });
+  var bst=Bs.map(function(b){
+    var map={},ignored=0,dup=0,rows=0;
+    dataRows(b).forEach(function(r){
+      var k=norm(b.grid[r][b.keyCol]);
+      if(k===null){ignored++;return;}
+      rows++;
+      if(map[k]!==undefined){dup++;return;}
+      map[k]=r;
+    });
+    return{map:map,ignored:ignored,dup:dup,rows:rows};
+  });
+  var aRows=[],aKeys={};
+  dataRows(A).forEach(function(r){var k=norm(A.grid[r][A.keyCol]);if(k!==null){aRows.push({r:r,k:k});aKeys[k]=(aKeys[k]||0)+1;}});
+  var fill=T.fill,edits=[],matchedBy=Bs.map(function(){return 0;}),perB=Bs.map(function(){return{};});
+  var anyMatch=0,none=0,emptyVals=0;
+  aRows.forEach(function(ar){
+    var hit=false;
+    items.forEach(function(it){
+      var st=bst[it.bi],row=st.map[ar.k];
+      if(row===undefined){edits.push({r:ar.r,c:it.destCol,v:fill,kind:'fill'});return;}
+      hit=true;perB[it.bi][ar.k]=1;
+      var v=it.b.grid[row][it.col];
+      if(isEmpty(v)){emptyVals++;edits.push({r:ar.r,c:it.destCol,v:null,kind:'empty'});}
+      else edits.push({r:ar.r,c:it.destCol,v:numify(v),kind:'new'});
+    });
+    if(hit)anyMatch++;else none++;
+  });
+  var notInA=Bs.map(function(b,bi){var l=[];for(var k in bst[bi].map)if(!aKeys[k])l.push(k);return l;});
+  var dupA=0;for(var k in aKeys)if(aKeys[k]>1)dupA++;
+  var hdrEdits=items.filter(function(it){return it.dest==='new';}).map(function(it){return{r:A.hdr-1,c:it.destCol,v:it.name};});
+  var grid=A.grid.map(function(r){return r.slice();});
+  hdrEdits.forEach(function(e){(grid[e.r]=grid[e.r]||[])[e.c]=e.v;});
+  edits.forEach(function(e){if(e.v!==null||e.kind==='empty'){(grid[e.r]=grid[e.r]||[])[e.c]=e.v;}});
+  for(var i=0;i<grid.length;i++){if(!grid[i])grid[i]=[];for(var j=0;j<grid[i].length;j++)if(grid[i][j]===undefined)grid[i][j]=null;}
+  return{A:A,Bs:Bs,items:items,ready:true,warns:warns,edits:edits,hdrEdits:hdrEdits,grid:grid,aRows:aRows,
+    stats:{aRows:aRows.length,matched:anyMatch,unmatched:none,emptyVals:emptyVals,dupA:dupA,
+      b:Bs.map(function(b,bi){return{name:b.name,rows:bst[bi].rows,ignored:bst[bi].ignored,dup:bst[bi].dup,notInA:notInA[bi]};})}};
+}
+
+/* ===================== escritura de xlsx ===================== */
+function xmlEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'');}
+function patchXlsx(res){
+  var A=res.A,x=A.x,path=x.sheets[A.sheetIdx].path,doc=parseXml(x.by[path].data),NS=doc.documentElement.namespaceURI;
+  var sd=els(doc,'sheetData')[0],rowMap={};
+  els(sd,'row').forEach(function(r){var n=r.getAttribute('r');if(n)rowMap[parseInt(n,10)]=r;});
+  function getRow(n){
+    if(rowMap[n])return rowMap[n];
+    var el=doc.createElementNS(NS,'row');el.setAttribute('r',String(n));
+    var before=null;els(sd,'row').some(function(r){if(parseInt(r.getAttribute('r'),10)>n){before=r;return true;}return false;});
+    sd.insertBefore(el,before);rowMap[n]=el;return el;
+  }
+  function cellAt(rowEl,n,col){
+    var ref=colName(col)+n,found=null,before=null;
+    els(rowEl,'c').some(function(c){
+      var m=/^([A-Z]+)/.exec(c.getAttribute('r')||'');var ci=m?colIndex(m[1]):-1;
+      if(ci===col){found=c;return true;}
+      if(ci>col){before=c;return true;}
+      return false;
+    });
+    if(found)return found;
+    var c=doc.createElementNS(NS,'c');c.setAttribute('r',ref);rowEl.insertBefore(c,before);return c;
+  }
+  function styleOf(n,col){
+    var r=rowMap[n];if(!r)return null;var s=null;
+    els(r,'c').forEach(function(c){var m=/^([A-Z]+)/.exec(c.getAttribute('r')||'');if(m&&colIndex(m[1])===col)s=c.getAttribute('s');});
+    return s;
+  }
+  function setVal(c,v){
+    while(c.firstChild)c.removeChild(c.firstChild);
+    c.removeAttribute('t');
+    if(v===null||v===undefined)return;
+    if(typeof v==='number'){var ve=doc.createElementNS(NS,'v');ve.textContent=String(v);c.appendChild(ve);}
+    else{
+      c.setAttribute('t','inlineStr');
+      var is=doc.createElementNS(NS,'is'),t=doc.createElementNS(NS,'t');t.setAttribute('xml:space','preserve');t.textContent=String(v);is.appendChild(t);c.appendChild(is);
+    }
+  }
+  var width=headers(A).length,lastHdrCol=width-1,newCols=[];
+  res.items.forEach(function(it){if(it.dest==='new'&&newCols.indexOf(it.destCol)<0)newCols.push(it.destCol);});
+  var hdrRow=A.hdr,stylesEntry=null,dateStyle=null;
+  function ensureDateStyle(base){
+    var se=x.by['xl/styles.xml'];if(!se)return null;
+    var sd2=parseXml(se.data),cx=els(sd2,'cellXfs')[0];if(!cx)return null;
+    var xfs=els(cx,'xf'),src=xfs[base!==null&&xfs[+base]?+base:0],NS2=sd2.documentElement.namespaceURI,nx=src?src.cloneNode(true):sd2.createElementNS(NS2,'xf');
+    nx.setAttribute('numFmtId','14');nx.setAttribute('applyNumberFormat','1');nx.setAttribute('applyAlignment','1');
+    while(nx.firstChild)nx.removeChild(nx.firstChild);
+    var al=sd2.createElementNS(NS2,'alignment');al.setAttribute('horizontal','center');al.setAttribute('wrapText','1');nx.appendChild(al);
+    cx.appendChild(nx);cx.setAttribute('count',String(xfs.length+1));
+    stylesEntry={name:'xl/styles.xml',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+new XMLSerializer().serializeToString(sd2).replace(/^<\?xml[^>]*\?>\s*/,''))};
+    return xfs.length;
+  }
+  res.hdrEdits.forEach(function(e){
+    var c=cellAt(getRow(hdrRow),hdrRow,e.c),s=styleOf(hdrRow,lastHdrCol);
+    if(s!==null)c.setAttribute('s',s);
+    if(e.serial!==undefined){
+      if(s!==null&&x.xfFmt[+s]){c.setAttribute('s',s);}
+      else{if(dateStyle===null)dateStyle=ensureDateStyle(s);
+      if(dateStyle!==null)c.setAttribute('s',String(dateStyle));}
+      setVal(c,e.serial);
+    }else setVal(c,e.v);
+  });
+  var maxRow=0,maxCol=0;
+  res.edits.forEach(function(e){
+    var n=e.r+1,rowEl=getRow(n),c=cellAt(rowEl,n,e.c);
+    if(res.mode!=='att'&&newCols.indexOf(e.c)>=0&&!c.getAttribute('s')){var s=styleOf(n,lastHdrCol);if(s!==null)c.setAttribute('s',s);}
+    if(e.kind==='empty')setVal(c,null);else setVal(c,e.v);
+    if(n>maxRow)maxRow=n;if(e.c>maxCol)maxCol=e.c;
+  });
+  newCols.forEach(function(c){if(c>maxCol)maxCol=c;});
+  var dim=els(doc,'dimension')[0];
+  if(dim){
+    var m=/^([A-Z]+\d+)(?::([A-Z]+)(\d+))?$/.exec(dim.getAttribute('ref')||'');
+    if(m){var endC=m[2]?colIndex(m[2]):colIndex(/^[A-Z]+/.exec(m[1])[0]),endR=m[3]?parseInt(m[3],10):1;
+      dim.setAttribute('ref',m[1]+':'+colName(Math.max(endC,maxCol))+Math.max(endR,maxRow));}
+  }
+  if(newCols.length){
+    var colsEl=els(doc,'cols')[0],covered=function(ci){return colsEl&&els(colsEl,'col').some(function(c){return ci+1>=+c.getAttribute('min')&&ci+1<=+c.getAttribute('max');});};
+    newCols.forEach(function(ci){
+      if(covered(ci))return;
+      if(!colsEl){colsEl=doc.createElementNS(NS,'cols');sd.parentNode.insertBefore(colsEl,sd);}
+      var ce=doc.createElementNS(NS,'col');ce.setAttribute('min',String(ci+1));ce.setAttribute('max',String(ci+1));ce.setAttribute('width',res.mode==='att'?'13':'22');ce.setAttribute('customWidth','1');colsEl.appendChild(ce);
+    });
+  }
+  var xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+new XMLSerializer().serializeToString(doc).replace(/^<\?xml[^>]*\?>\s*/,'');
+  var files=x.entries.map(function(e){return e.name===path?{name:e.name,data:enc.encode(xml)}:(stylesEntry&&e.name==='xl/styles.xml'?stylesEntry:e);});
+  return writeZip(files);
+}
+function buildXlsx(grid,hdrRow,sheetName){
+  var rows='',maxC=0;
+  grid.forEach(function(r){maxC=Math.max(maxC,r.length);});
+  grid.forEach(function(r,ri){
+    if(!r.length)return;
+    var cells='';
+    r.forEach(function(v,ci){
+      if(v===null||v===undefined)return;
+      var ref=colName(ci)+(ri+1),st=ri===hdrRow-1?' s="1"':'';
+      if(typeof v==='number')cells+='<c r="'+ref+'"'+st+'><v>'+v+'</v></c>';
+      else if(typeof v==='boolean')cells+='<c r="'+ref+'"'+st+' t="b"><v>'+(v?1:0)+'</v></c>';
+      else cells+='<c r="'+ref+'"'+st+' t="inlineStr"><is><t xml:space="preserve">'+xmlEsc(v)+'</t></is></c>';
+    });
+    rows+='<row r="'+(ri+1)+'">'+cells+'</row>';
+  });
+  var M='http://schemas.openxmlformats.org/spreadsheetml/2006/main',head='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  var sheet=head+'<worksheet xmlns="'+M+'"><dimension ref="A1:'+colName(Math.max(0,maxC-1))+Math.max(1,grid.length)+'"/><cols><col min="1" max="'+Math.max(1,maxC)+'" width="20" customWidth="1"/></cols><sheetData>'+rows+'</sheetData></worksheet>';
+  var styles=head+'<styleSheet xmlns="'+M+'"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>';
+  var wb=head+'<workbook xmlns="'+M+'" xmlns:r="'+REL_NS+'"><sheets><sheet name="'+xmlEsc((sheetName||'Hoja1').slice(0,31))+'" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  var P='http://schemas.openxmlformats.org/package/2006/relationships';
+  return writeZip([
+    {name:'[Content_Types].xml',data:enc.encode(head+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>')},
+    {name:'_rels/.rels',data:enc.encode(head+'<Relationships xmlns="'+P+'"><Relationship Id="rId1" Type="'+REL_NS+'/officeDocument" Target="xl/workbook.xml"/></Relationships>')},
+    {name:'xl/workbook.xml',data:enc.encode(wb)},
+    {name:'xl/_rels/workbook.xml.rels',data:enc.encode(head+'<Relationships xmlns="'+P+'"><Relationship Id="rId1" Type="'+REL_NS+'/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="'+REL_NS+'/styles" Target="styles.xml"/></Relationships>')},
+    {name:'xl/styles.xml',data:enc.encode(styles)},
+    {name:'xl/worksheets/sheet1.xml',data:enc.encode(sheet)}
+  ]);
+}
+function buildCsv(grid,delim){
+  var comma=delim===';',lines=grid.map(function(r){
+    return r.map(function(v){
+      var s=v===null||v===undefined?'':(typeof v==='number'?String(+v.toFixed(10)):String(v));
+      if(comma&&typeof v==='number')s=s.replace('.',',');
+      return /[";\r\n]|,|\t/.test(s)&&(s.indexOf(delim)>=0||/["\r\n]/.test(s))?'"'+s.replace(/"/g,'""')+'"':s;
+    }).join(delim);
+  });
+  return enc.encode('﻿'+lines.join('\r\n')+'\r\n');
+}
+
+/* ===================== interfaz: archivos ===================== */
+var listEl=$('files'),picker=$('picker'),msgEl=$('files-msg');
+T.errs=[];
+function setErrs(a){T.errs=a;renderMsg();}
+function renderMsg(){msgEl.textContent=T.errs.map(function(e){return _t.apply(null,[e.message].concat(e.args||[]));}).join(' ');}
+function sizeText(f){return f.size>=1048576?(f.size/1048576).toFixed(1).replace('.',LANG==='en'?'.':',')+' MB':Math.max(1,Math.round(f.size/1024))+' KB';}
+function renderFiles(){
+  listEl.innerHTML='';
+  T.files.forEach(function(f){
+    var sel=h('select',{class:'role-sel','aria-label':_t('Función de {0}',f.name),on:{change:function(e){setRole(f,e.target.value);}}},
+      h('option',{value:'A',text:_t('Listado (recibe)')}),h('option',{value:'B',text:_t('Class (aporta)')}));
+    sel.value=f.role;
+    listEl.appendChild(h('li',{class:'file'},
+      h('span',{class:'file-type'+(f.kind==='xlsx'?' xlsx':''),text:f.ext.toUpperCase().slice(0,4)}),
+      h('span',{class:'file-name',text:f.name}),
+      h('span',{class:'file-meta',text:sizeText(f)}),sel,
+      h('button',{class:'remove',type:'button','aria-label':_t('Quitar {0}',f.name),text:'×',on:{click:function(){removeFile(f);}}})));
+  });
+  $('clear-all').hidden=!T.files.length;
+}
+function setRole(f,role){
+  f.roleManual=true;
+  if(role==='A')T.files.forEach(function(g){if(g!==f&&g.role==='A')g.role='B';});
+  f.role=role;
+  T.files.forEach(function(g){g.keyAuto=true;});
+  refresh();
+}
+function removeFile(f){
+  T.files=T.files.filter(function(g){return g!==f;});
+  T.files.forEach(function(g){g.keyAuto=true;});
+  refresh();
+}
+async function addFiles(list){
+  setErrs([]);var errs=[];
+  for(var i=0;i<list.length;i++){try{await addFile(list[i]);}catch(e){errs.push(e);}}
+  T.files.forEach(function(g){g.keyAuto=true;});
+  setErrs(errs);
+  refresh();
+}
+var drop=$('drop');
+['dragenter','dragover'].forEach(function(e){drop.addEventListener(e,function(ev){ev.preventDefault();drop.classList.add('over');});});
+['dragleave','drop'].forEach(function(e){drop.addEventListener(e,function(ev){ev.preventDefault();drop.classList.remove('over');});});
+drop.addEventListener('drop',function(ev){addFiles(Array.prototype.slice.call(ev.dataTransfer.files));});
+picker.addEventListener('change',function(){var l=Array.prototype.slice.call(picker.files);picker.value='';addFiles(l);});
+$('clear-all').addEventListener('click',function(){T.files=[];setErrs([]);refresh();});
+
+/* ===================== interfaz: combinar ===================== */
+var mergeUi=$('merge-ui');
+function numField(label,value,min,onchange){
+  var id='n'+(++T.seq);
+  return h('div',{class:'field'},h('label',{for:id,text:label}),h('input',{id:id,type:'number',min:String(min),value:String(value),on:{change:function(e){onchange(Math.max(min,parseInt(e.target.value,10)||min));}}}));
+}
+function selField(label,opts,value,onchange,help){
+  var id='s'+(++T.seq),s=h('select',{id:id,on:{change:function(e){onchange(e.target.value);}}});
+  opts.forEach(function(o){s.appendChild(h('option',{value:String(o[0]),text:o[1]}));});
+  s.value=String(value);
+  return h('div',{class:'field'},h('label',{for:id,text:label}),s,help?h('p',{class:'help',text:help}):null);
+}
+function fileCardAtt(f){
+  var hs=headers(f),isA=f.role==='A',idx=filesB().indexOf(f),fields=h('div',{class:'fields'});
+  if(f.kind==='xlsx'&&f.x.sheets.length>1)
+    fields.appendChild(selField(_t('Hoja'),f.x.sheets.map(function(s,i){return[i,s.name];}),f.sheetIdx,function(v){f.sheetIdx=+v;loadSheet(f);T.files.forEach(function(g){g.keyAuto=true;});refresh();}));
+  fields.appendChild(numField(_t('Fila de encabezados'),f.hdr,1,function(v){f.hdr=v;f.keyAuto=true;refresh();}));
+  fields.appendChild(selField(isA?_t('Columna Nº expediente'):_t('Columna clave (índice)'),hs.map(function(t,i){return[i,t];}),f.keyCol===undefined?0:f.keyCol,function(v){f.keyCol=+v;f.keyAuto=false;refresh();},isA?_t('Se ignoran los ceros a la izquierda.'):undefined));
+  if(isA){
+    fields.appendChild(selField(_t('Columna DNI'),[[-1,_t('(ninguna)')]].concat(hs.map(function(t,i){return[i,t];})),f.dniCol===undefined?-1:f.dniCol,function(v){f.dniCol=+v;f.dniAuto=false;refresh(true);},_t('Se usa cuando la clave de Class es un número de más de 5 cifras.')));
+    fields.appendChild(selField(_t('Columna NOMBRE'),[[-1,_t('(ninguna)')]].concat(hs.map(function(t,i){return[i,t];})),f.nameCol===undefined?-1:f.nameCol,function(v){f.nameCol=+v;f.nameAuto=false;refresh(true);},_t('Se usa cuando la clave de Class es un texto (nombre).')));
+  }else{
+    var d=f.dateOverride!==undefined?parseDate(f.dateOverride):parseDate(f.dateSrc),id='d'+(++T.seq);
+    fields.appendChild(h('div',{class:'field'},h('label',{for:id,text:_t('Fecha (celda A2 de la primera hoja)')}),
+      h('input',{id:id,type:'text',value:f.dateOverride!==undefined?f.dateOverride:(d?d.text:fmt(f.dateSrc)),on:{change:function(e){f.dateOverride=e.target.value.trim();refresh(true);}}}),
+      h('p',{class:'help',text:d?'':_t('No se reconoce como fecha.')})));
+  }
+  return h('div',{class:'fcard'},h('div',{class:'fcard-head'},h('span',{class:'role'+(isA?'':' b'),text:isA?'Listado':'Class'+(filesB().length>1?' '+(idx+1):'')}),h('b',{text:f.name})),fields);
+}
+function fileCard(f){
+  if(T.mode==='att')return fileCardAtt(f);
+  var hs=headers(f),isA=f.role==='A',idx=filesB().indexOf(f),fields=h('div',{class:'fields'});
+  if(f.kind==='xlsx'&&f.x.sheets.length>1)
+    fields.appendChild(selField(_t('Hoja'),f.x.sheets.map(function(s,i){return[i,s.name];}),f.sheetIdx,function(v){f.sheetIdx=+v;loadSheet(f);T.files.forEach(function(g){g.keyAuto=true;});refresh();}));
+  fields.appendChild(numField(_t('Fila de encabezados'),f.hdr,1,function(v){f.hdr=v;f.keyAuto=true;f.picks={};refresh();}));
+  fields.appendChild(selField(_t('Columna clave (índice)'),hs.map(function(t,i){return[i,t];}),f.keyCol===undefined?0:f.keyCol,function(v){f.keyCol=+v;f.keyAuto=false;if(!isA)f.picks={};refresh();},
+    _t('Se ignoran los ceros a la izquierda.')));
+  var card=h('div',{class:'fcard'},h('div',{class:'fcard-head'},h('span',{class:'role'+(isA?'':' b'),text:isA?'Listado':'Class'+(filesB().length>1?' '+(idx+1):'')}),h('b',{text:f.name})),fields);
+  if(!isA){
+    var hsA=headers(fileA()),picks=h('div',{class:'picks'},h('b',{text:_t('Columnas de este archivo que se incorporan al Listado')}));
+    hs.forEach(function(t,ci){
+      if(ci===f.keyCol)return;
+      var p=f.picks[ci]||(f.picks[ci]={on:false,dest:'new',name:t});
+      var cb=h('input',{type:'checkbox',on:{change:function(e){p.on=e.target.checked;refresh(true);}}});cb.checked=!!p.on;
+      var row=h('div',{class:'pick'+(p.on?'':' off')},h('label',{class:'check'},cb,h('span',{text:t})));
+      if(p.on){
+        var dest=h('select',{'aria-label':_t('Destino de {0}',t),on:{change:function(e){p.dest=e.target.value;refresh(true);}}},h('option',{value:'new',text:_t('Columna nueva al final')}));
+        hsA.forEach(function(a,i){dest.appendChild(h('option',{value:String(i),text:_t('Escribir en «{0}»',a)}));});
+        dest.value=String(p.dest);
+        row.appendChild(dest);
+        if(p.dest==='new')row.appendChild(h('input',{type:'text','aria-label':_t('Nombre de la columna nueva'),value:p.name,on:{change:function(e){p.name=e.target.value.trim()||t;refresh(true);}}}));
+      }
+      picks.appendChild(row);
+    });
+    card.appendChild(picks);
+  }
+  return card;
+}
+function renderMerge(){
+  mergeUi.innerHTML='';
+  var A=fileA(),Bs=filesB();
+  if(!A){mergeUi.appendChild(h('div',{class:'soon',text:_t('Carga arriba el archivo Listado (el que recibe los datos) y uno o varios archivos Class (los que los aportan).')}));return;}
+  var cards=h('div',{class:'fcards'},fileCard(A));
+  Bs.forEach(function(b){cards.appendChild(fileCard(b));});
+  mergeUi.appendChild(cards);
+  if(!Bs.length)mergeUi.appendChild(h('div',{class:'note info'},h('span',{text:_t('Añade al menos un archivo Class para poder combinar.')})));
+  if(T.mode==='att')return;
+  var fid='fill',fillIn=h('input',{id:fid,type:'text',value:String(T.fill),on:{change:function(e){var t=e.target.value.trim().replace(',','.');T.fill=t===''?0:(isNaN(Number(t))?t:Number(t));refresh(true);}}});
+  mergeUi.appendChild(h('div',{class:'global-opts'},h('div',{class:'field'},h('label',{for:fid,text:_t('Valor si la clave no aparece en Class')}),fillIn,h('p',{class:'help',text:_t('Por defecto, 0.')}))));
+}
+
+/* ===================== interfaz: vista previa y exportación ===================== */
+var res=null;
+function renderPreview(){
+  var box=$('prev-body'),stats=$('prev-stats'),notes=$('prev-notes');
+  box.innerHTML='';stats.innerHTML='';notes.innerHTML='';
+  $('prev-hint').textContent=_t('Aún no hay resultado');
+  if(!res||!res.ready){
+    box.appendChild(h('div',{class:'empty-prev',text:res&&!res.ready?_t('Marca al menos una columna de Class para incorporarla al Listado.'):_t('Carga los archivos y elige las columnas para ver aquí el resultado.')}));
+    return;
+  }
+  var s=res.stats;
+  $('prev-hint').textContent=_t('Todas las filas · doble clic en una celda añadida para modificarla');
+  (res.mode==='att'?[[s.aRows,_t('filas del Listado con clave')],[s.matched,_t('con algún 1')],[s.unmatched,_t('solo con 0')],[res.items.length,_t('columnas de fecha añadidas')]]:[[s.aRows,_t('filas del Listado con clave')],[s.matched,_t('con coincidencia en Class')],[s.unmatched,_t('sin coincidencia (se rellenan con {0})',T.fill)],[res.items.length,_t('columnas incorporadas')]]).forEach(function(x){stats.appendChild(h('span',{},h('b',{text:String(x[0]).replace(/\B(?=(\d{3})+(?!\d))/g,LANG==='en'?',':'.')}),x[1]));});
+  var A=res.A,hs=headers(A),show=[],i,hdrTxt=function(c){return c<hs.length?hs[c]:String((res.hdrEdits.filter(function(e){return e.c===c;})[0]||{}).v);};
+  for(i=0;i<hs.length;i++)show.push(i);
+  var newCols=[];res.items.forEach(function(it){if(it.dest==='new')newCols.push(it.destCol);});
+  var cols=show.concat(newCols);
+  var kinds={};res.edits.forEach(function(e){kinds[e.r+':'+e.c]=e.kind;});
+  var thead=h('tr'),srt=T.sort&&cols.indexOf(T.sort.col)>=0?T.sort:null;
+  cols.forEach(function(c){
+    var t=hdrTxt(c),on=srt&&srt.col===c,arrow=on?(srt.dir>0?' ▲':' ▼'):'';
+    thead.appendChild(h('th',{class:'sortable',tabindex:'0',role:'columnheader','aria-sort':on?(srt.dir>0?'ascending':'descending'):'none',title:_t('Ordenar por esta columna'),
+      on:{click:function(){T.sort=on&&srt.dir<0?null:{col:c,dir:on?-1:1};renderPreview();},keydown:function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();this.click();}}},text:String(t)+arrow}));
+  });
+  var tbody=h('tbody'),lastR=-1,order=[];res.aRows.forEach(function(a){if(a.r>lastR)lastR=a.r;});
+  for(var r=A.hdr;r<=lastR&&r<res.grid.length;r++)order.push(r);
+  if(srt){
+    var cmp=function(x,y){
+      var u=res.grid[x][srt.col],v=res.grid[y][srt.col],ue=isEmpty(u),ve=isEmpty(v);
+      if(ue||ve)return ue&&ve?0:(ue?1:-1);
+      var d;
+      if(typeof u==='number'&&typeof v==='number')d=u-v;
+      else{
+        var su=fmt(u),sv=fmt(v),m1=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(su),m2=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(sv);
+        d=(typeof u==='number'||typeof v==='number')?(typeof u==='number'?-1:1):su.localeCompare(sv,'es',{numeric:true,sensitivity:'base'});
+      }
+      return d*srt.dir||(x-y);
+    };
+    order.sort(function(x,y){var c=cmp(x,y);return c;});
+  }
+  order.forEach(function(r){
+    var tr=h('tr',{class:T.hl[r]?'hl':null,on:{click:function(){if(T.hl[r])delete T.hl[r];else T.hl[r]=1;this.classList.toggle('hl');}}});
+    cols.forEach(function(c){
+      var k=kinds[r+':'+c],v=res.grid[r][c],cls=k==='fill'?'fill':(k==='new'||k==='empty')?'new':'',em=res.editMap[r+':'+c];
+      if(em&&em.manual)cls='man';
+      var td=h('td',{class:cls+(em?' editable':''),text:fmt(v)});
+      if(em){td.title=_t('Doble clic para modificar este valor');td.addEventListener('dblclick',function(ev){ev.stopPropagation();editCell(td,r,c);});}
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  box.appendChild(h('div',{class:'table-scroll',tabindex:'0',role:'region','aria-label':_t('Vista previa del resultado')},h('table',{},h('thead',{},thead),tbody)));
+  if(res.manualCount)notes.appendChild(h('div',{class:'note info'},h('span',{},h('b',{text:_t('Modificado a mano: ')}),_t('{0} valor(es) (en azul en la tabla); se guardarán en el archivo exportado.',res.manualCount)),h('button',{class:'btn ghost small',type:'button',style:'margin-left:12px',text:_t('Deshacer cambios manuales'),on:{click:function(){T.manual={};refresh(true);}}})));
+  res.warns.forEach(function(w){notes.appendChild(h('div',{class:'note warn'},h('span',{text:w})));});
+  if(s.emptyVals)notes.appendChild(h('div',{class:'note warn'},h('span',{},h('b',{text:_t('Atención: ')}),_t('{0} coincidencia(s) tienen la celda vacía en Class; se deja vacía en el Listado.',s.emptyVals))));
+  if(s.dupAList&&s.dupAList.length)notes.appendChild(h('div',{class:'note warn'},h('span',{},h('b',{text:_t('Claves repetidas en el Listado: ')}),s.dupAList.map(function(d){return d.k+' → '+d.rows.join(_t(' y '));}).join(' · '))));
+  else if(s.dupA)notes.appendChild(h('div',{class:'note warn'},h('span',{},h('b',{text:_t('Atención: ')}),_t('{0} clave(s) están repetidas en el Listado.',s.dupA))));
+  if(s.b.length)notes.appendChild(h('p',{class:'cls-intro',text:_t('Información extraída (y fallida) de cada archivo de Socrative:')}));
+  s.b.forEach(function(b){
+    var body=h('div',{class:'cls-body'}),chips=h('span',{class:'cls-chips'});
+    if(res.mode==='att'){
+      chips.appendChild(h('span',{class:'chip',text:_t('{0} por Nº expediente',b.byExp)}));
+      chips.appendChild(h('span',{class:'chip',text:_t('{0} por DNI',b.byDni)}));
+      chips.appendChild(h('span',{class:'chip',text:_t('{0} por nombre',b.byName)}));
+    }
+    if(res.mode==='att'&&b.nameMatches.length)body.appendChild(h('details',{class:'keys'},h('summary',{text:_t('revisa las {0} coincidencias por nombre',b.nameMatches.length)}),h('p',{text:b.nameMatches.map(function(m){return m.b+' → '+m.a+' ('+m.pct+' %)';}).join(' · ')})));
+    if(b.dupList&&b.dupList.length)body.appendChild(h('div',{class:'note warn'},h('span',{},h('b',{text:_t('claves repetidas (cuenta la que tiene respuestas): ')}),b.dupList.map(function(d){return _t('{0} → cuenta la fila {1}',d.rows.map(function(x){return _t('fila {0} («{1}»)',x.row,x.v);}).join(_t(' y ')),d.chosen);}).join(' · '))));
+    if(res.mode==='att'&&b.ambiguous.length)body.appendChild(h('div',{class:'note warn'},h('span',{},h('b',{text:_t('nombres con varias coincidencias posibles, no se marcan: ')}),b.ambiguous.map(function(a){return q(a.k)+' → '+a.c.join(', ');}).join(' · '))));
+    if(b.notInA.length&&res.mode==='att'){
+      var cn=[A.keyCol,A.dniCol,A.nameCol].filter(function(c){return c>=0&&c<hs.length;}).map(function(c){return _t('ni por {0}',hs[c]);});
+      body.appendChild(h('div',{class:'note warn'},h('span',{},_t('{0} clave(s) no encontradas en el Listado ({1}): {2}.',b.notInA.length,cn.join(', '),b.notInA.join(', ')))));
+    }else if(b.notInA.length){
+      body.appendChild(h('details',{class:'keys'},h('summary',{text:_t('{0} clave(s) de Class que no están en el Listado',b.notInA.length)}),h('p',{text:b.notInA.slice(0,200).join(', ')+(b.notInA.length>200?' …':'')})));
+    }
+    notes.appendChild(h('section',{class:'cls'},h('div',{class:'cls-head'},h('b',{class:'cls-name',text:b.name}),chips),body));
+  });
+}
+function parseManual(t){
+  t=t.trim();if(t==='')return null;
+  if(/^-?\d+([.,]\d+)?$/.test(t))return Number(t.replace(',','.'));
+  return t;
+}
+function editCell(td,r,c){
+  var em=res.editMap[r+':'+c];if(!em||td.querySelector('input'))return;
+  var it=res.items.filter(function(x){return x.destCol===c;})[0];if(!it)return;
+  var cur=res.grid[r][c],done=false,inp=h('input',{type:'text','aria-label':_t('Modificar valor'),value:fmt(cur),class:'cell-edit'});
+  td.textContent='';td.appendChild(inp);inp.focus();inp.select();
+  inp.addEventListener('click',function(e){e.stopPropagation();});
+  inp.addEventListener('dblclick',function(e){e.stopPropagation();});
+  function finish(commit){
+    if(done)return;done=true;
+    if(commit){
+      var v=parseManual(inp.value),key=it.b.name+'|'+it.name+'|'+r,orig=em.orig===undefined?null:em.orig;
+      if(fmt(v)===fmt(orig)&&(v===null)===(orig===null))delete T.manual[key];else T.manual[key]=v;
+    }
+    var sc=document.querySelector('#prev-body .table-scroll'),top=sc?sc.scrollTop:0,left=sc?sc.scrollLeft:0;
+    refresh(true);
+    sc=document.querySelector('#prev-body .table-scroll');if(sc){sc.scrollTop=top;sc.scrollLeft=left;}
+  }
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();finish(true);}else if(e.key==='Escape'){e.preventDefault();finish(false);}});
+  inp.addEventListener('blur',function(){finish(true);});
+}
+function updateSteps(){
+  var lis=document.querySelectorAll('.steps li'),done=[T.files.length>0,!!(res&&res.ready),!!(res&&res.ready),false],now=-1;
+  for(var i=0;i<4;i++)if(!done[i]&&now<0)now=i;
+  lis.forEach(function(li,i){li.className=done[i]?'done':(i===now?'now':'');});
+}
+function refresh(keepKeys){
+  if(!keepKeys)autoKeys();
+  res=compute();
+  renderFiles();renderMerge();renderPreview();updateSteps();
+  $('dl').disabled=!(res&&res.ready);
+  var A=fileA();if(A&&!$('out-name').dataset.touched){
+    var mx=-1;if(res&&res.mode==='att')res.items.forEach(function(it){if(it.serial!==undefined&&it.serial>mx)mx=it.serial;});
+    $('out-name').value=baseName(A.name).replace(/_\d{2}-\d{2}-\d{4}$/,'')+(mx>=0?'_'+new Date((mx-25569)*86400000).toISOString().slice(0,10).split('-').reverse().join('-'):_t('_combinado'));
+  }
+}
+$('out-name').addEventListener('input',function(){this.dataset.touched='1';});
+
+function renderDl(){$('dl-msg').textContent=T.dlErr?_t('No se pudo generar el archivo: {0}',T.dlErr):'';}
+function download(name,u8,type){
+  var url=URL.createObjectURL(new Blob([u8],{type:type}));T.urls.push(url);
+  var a=h('a',{href:url,download:name});document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){try{URL.revokeObjectURL(url);}catch(e){}},4000);
+}
+$('dl').addEventListener('click',function(){
+  if(!res||!res.ready)return;
+  var fmtSel=document.querySelector('input[name="fmt"]:checked').value,base=($('out-name').value||'resultado').replace(/[\\\/:*?"<>|]+/g,'_'),A=res.A;
+  try{
+    if(fmtSel==='xlsx'){
+      var data=A.kind==='xlsx'?patchXlsx(res):buildXlsx(res.grid,A.hdr,'Resultado');
+      download(base+'.xlsx',data,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }else download(base+'.csv',buildCsv(res.grid,A.kind==='csv'?A.csv.delim:';'),'text/csv;charset=utf-8');
+    T.dlErr=null;
+  }catch(e){T.dlErr=e.message;}
+  renderDl();
+});
+
+/* ===================== borrar todos los archivos intermedios ===================== */
+var wb=$('wipe-btn'),wc=$('wipe-confirm'),wd=$('wipe-done');
+function wipeAll(){
+  T.urls.forEach(function(u){try{URL.revokeObjectURL(u);}catch(e){}});
+  T.urls=[];T.files.forEach(function(f){f.buf=null;f.grid=null;f.x=null;f.csv=null;});
+  T.files=[];T.out=null;T.fill=0;T.mode='att';T.dniMin=4;T.sort=null;T.hl={};T.manual={};res=null;picker.value='';setErrs([]);T.dlErr=null;
+  $('out-name').value=_t('resultado_combinado');delete $('out-name').dataset.touched;
+  try{Object.keys(localStorage).filter(function(k){return k.indexOf('tabula')===0;}).forEach(function(k){localStorage.removeItem(k);});}catch(e){}
+  try{Object.keys(sessionStorage).filter(function(k){return k.indexOf('tabula')===0;}).forEach(function(k){sessionStorage.removeItem(k);});}catch(e){}
+  refresh(true);
+}
+wb.addEventListener('click',function(){wd.hidden=true;wc.hidden=false;wb.hidden=true;$('wipe-no').focus();});
+$('wipe-no').addEventListener('click',function(){wc.hidden=true;wb.hidden=false;wb.focus();});
+$('wipe-yes').addEventListener('click',function(){wipeAll();wc.hidden=true;wb.hidden=false;wd.hidden=false;wd.scrollIntoView({block:'nearest'});});
+$('restart').addEventListener('click',function(){wipeAll();wd.hidden=true;window.scrollTo(0,0);});
+
+
+/* ===================== idioma (ES / EN) ===================== */
+var HELP_ES=document.querySelector('[data-h]').innerHTML,
+    HELP_EN='Files whose name starts with “Class” are assigned as <b>Class</b> (they provide the data); the rest as <b>Listado</b> (it receives the data). You can fix this in the file list. Choose the row where the column headers appear and which columns must be compared.',
+    TITLE_ES=document.title,TITLE_EN='Tabula · CSV and Excel file preparation',
+    META=document.querySelector('meta[name="description"]'),META_ES=META.getAttribute('content'),
+    META_EN='Combine, clean and rearrange CSV and Excel files in your browser and export the result. Your data never leaves your computer.',
+    statics=[],attrs=[];
+(function(){
+  var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null),n;
+  while((n=w.nextNode())){
+    var p=n.parentNode;
+    if(!n.nodeValue.trim()||/^(SCRIPT|STYLE)$/.test(p.nodeName)||p.closest('[data-h]'))continue;
+    statics.push({n:n,es:n.nodeValue});
+  }
+  document.querySelectorAll('[aria-label]').forEach(function(el){attrs.push({el:el,es:el.getAttribute('aria-label')});});
+})();
+function applyStatic(){
+  statics.forEach(function(o){
+    var m=/^(\s*)([\s\S]*?)(\s*)$/.exec(o.es);
+    o.n.nodeValue=m[1]+_t(m[2])+m[3];
+  });
+  attrs.forEach(function(o){o.el.setAttribute('aria-label',_t(o.es));});
+  document.querySelector('[data-h]').innerHTML=LANG==='en'?HELP_EN:HELP_ES;
+  document.title=LANG==='en'?TITLE_EN:TITLE_ES;
+  META.setAttribute('content',LANG==='en'?META_EN:META_ES);
+}
+function setLang(l){
+  LANG=l;document.documentElement.lang=l;
+  applyStatic();
+  if(!$('out-name').dataset.touched&&!fileA())$('out-name').value=_t('resultado_combinado');
+  document.querySelectorAll('[data-lang]').forEach(function(b){b.setAttribute('aria-pressed',b.getAttribute('data-lang')===l?'true':'false');});
+  renderMsg();renderDl();refresh(true);
+}
+document.querySelectorAll('[data-lang]').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
+refresh(true);
+window.__tabulaTest={T:T,norm:norm,compute:compute};
+})();
+
+</script>
+</body>
+</html>
